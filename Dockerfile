@@ -12,8 +12,8 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-# Ensure public directory exists (Next.js treats it as optional)
-RUN mkdir -p public
+# Ensure these directories exist (may be absent before first build/migration)
+RUN mkdir -p public drizzle
 RUN npm run build
 
 # ─── Stage 2: Runner ─────────────────────────────────────────────────────────
