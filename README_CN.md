@@ -76,7 +76,7 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/your-username/subscribe-anything.git
+git clone https://github.com/freez-ai/subscribe-anything.git
 cd subscribe-anything
 ```
 
@@ -181,7 +181,7 @@ sudo apt-get install -y python3 make g++
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/your-username/subscribe-anything.git
+git clone https://github.com/freez-ai/subscribe-anything.git
 cd subscribe-anything
 
 # 2. 安装依赖（会自动编译原生模块）
