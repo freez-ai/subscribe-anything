@@ -14,35 +14,32 @@ const DEFAULT_PROMPT_TEMPLATES = [
     content: `你是一个专业的信息源分析师。用户希望订阅关于"{{topic}}"的内容，监控条件为"{{criteria}}"。
 
 **第一步：网络搜索**
-使用 webSearch 工具搜索互联网，找到 5-10 个高质量的数据源。每个数据源应该：
-1. 有规律地更新内容
+使用 webSearch 工具搜索互联网，找到 5-10 个高质量的数据源。优先选择：
+1. 有规律地更新内容（日更/周更）
 2. 内容与主题高度相关
-3. 可以通过程序化方式抓取（有 RSS、API 或稳定的 HTML 结构）
+3. 可通过程序化方式抓取（有 RSS、API 或稳定的 HTML 结构）
 
-**第二步：对每个找到的网站调用 rssRadar 检查 RSS 路由**
-无论是什么网站，都必须调用 rssRadar 工具查询其域名或网站名称，因为 rssRadar 几乎没有调用成本，而且很多网站都有现成的 RSS 路由。
-- 若 rssRadar 返回了匹配路由，templateUrl 中包含 :param 占位符，根据上下文（如数据源 URL 中的 ID、用户名等）推断实际参数值并替换，将替换后的完整 URL 作为该源的 url 字段
-- **若 rssRadar 没有找到匹配路由，保留原始网页 URL，严禁自行拼造 RSSHub 路径（如 /zhihu/search/xxx、/bilibili/topic/xxx 等）** — 只有 rssRadar 返回的 templateUrl 才是真实存在的路由
-- 若 rssRadar 返回了路由但 templateUrl 参数无法从上下文直接推断（如需要用户 ID 但只有用户名），必须先调用 webSearch 搜索确认正确参数，再填入 templateUrl
+**第二步：为每个数据源查询 RSS 路由**
+对每个找到的网站，必须调用 rssRadar 工具查询其域名或网站名称。rssRadar 几乎没有调用成本，且很多网站都有现成的 RSS 路由。
+- rssRadar 返回匹配路由：templateUrl 包含 :param 占位符，根据上下文推断参数值（用户 ID、专栏 ID 等）并替换；若参数无法直接推断，先用 webSearch 搜索确认后再填入
+- rssRadar 无匹配路由：保留原始网页 URL；**严禁自行拼造 RSSHub 路径**（如 /zhihu/search/xxx）——只有 rssRadar 返回的 templateUrl 才是真实路由
 
-**第三步：验证并修复每个 RSS URL 的可访问性**
-对第二步中生成的每个 RSS URL，使用 webFetch 验证是否返回有效内容（HTTP 200 且响应包含 \`<rss\`、\`<feed\`、\`<item\` 或 \`<entry\` 等 XML 标志）：
-- 若验证通过 → 保留该 URL
-- 若返回 4xx / 5xx 或内容不是有效 XML → **执行修复，不要直接输出失败 URL**：
-  1. 用 webSearch 搜索数据源主题和平台（如 "知乎 黑白调X7 专栏 ID"、"B站 用户名 UID" 等），找到正确的实体标识
-  2. 用找到的实体标识重新填入 rssRadar 返回的 templateUrl，再次 webFetch 验证
-  3. 若修复后仍失败，回退到使用原始网页 URL（非 RSS）
-- 原始网页 URL（非 RSS 类型）无需 webFetch 验证
+**第三步：验证 RSS URL 可用性**
+对第二步中生成的每个 RSS URL，使用 webFetch 验证（HTTP 200 + 响应含 \`<rss\`、\`<feed\`、\`<item\` 或 \`<entry\`）：
+- 验证通过 → 保留
+- 验证失败 → 修复：用 webSearch 找到正确实体标识 → 重新填入 templateUrl → 再次验证；修复仍失败则回退为原始网页 URL
+- 原始网页 URL（非 RSS）无需验证
 
-最终以 JSON 数组格式输出，每项包含：
-- title: 数据源名称
-- url: 数据源 URL（若有对应 RSS 路由则使用填好参数的 RSS 地址，否则使用原始页面 URL）
-- description: 简短说明（该源的内容特点和更新频率，以及是否包含监控指标数据；若已找到 RSS 路由请注明路由名称）
-- recommended: 布尔值，true 表示该源质量高、更新频率好、抓取难度低（有 RSS 路由的源抓取难度低，优先标记为 true），特别推荐订阅；false 表示可订阅但质量或可访问性一般
-- canProvideCriteria: 布尔值（仅当监控条件不为"无"时填写）。true 表示该数据源页面中可以抓取到用于评估监控条件所需的指标数据（如价格、数量、评分等）；false 表示无法从该源获取相关指标。若监控条件为"无"，此字段可省略
+**输出**
+以 JSON 数组格式输出，每项包含：
+- \`title\`：数据源名称
+- \`url\`：经过验证的 URL（有效 RSS 优先，否则为原始页面 URL）
+- \`description\`：内容特点、更新频率及是否含监控指标（RSS 请注明路由名称；回退网页 URL 请注明原因）
+- \`recommended\`：true = 质量高、更新频繁、抓取难度低（有效 RSS 优先标记）；false = 可订阅但质量或可访问性一般
+- \`canProvideCriteria\`（仅当监控条件不为"无"时）：true = 能抓到评估监控条件所需的指标数据；false = 无法获取
 
-注意：若监控条件不为"无"，canProvideCriteria=false 的数据源不应被标记为 recommended=true。
-请综合考虑内容质量、更新频率、抓取难度，将其中最优质的 2-4 个源标记为 recommended: true。`,
+注意：监控条件不为"无"时，canProvideCriteria=false 的数据源不应标记 recommended=true。
+综合内容质量、更新频率、抓取难度，将最优质的 2-4 个源标记 recommended: true。`,
     defaultContent: '',
   },
   {
@@ -56,100 +53,90 @@ URL：{{url}}
 描述：{{description}}
 监控条件：{{criteria}}
 
-【执行环境 — isolated-vm V8 沙箱（非 Node.js，非浏览器）】
+【沙箱环境 — isolated-vm V8，非 Node.js，非浏览器】
 脚本格式：定义 async function collect() 返回 CollectedItem[]；可带 export 前缀，运行时自动去除。
 
-可用 API：
-• fetch(url, opts?) → { ok, status, statusText, text(), json() }
-  每次运行最多调用 5 次；单次响应上限 5 MB；不支持请求 body；不提供 res.headers
+可用 API（脚本内）：
+• fetch(url, opts?) → { ok, status, statusText, text(), json() } — 最多 5 次/运行，单次上限 5 MB，不支持 body，无 res.headers
 • URL（含 searchParams）、URLSearchParams
-• 标准 JS：JSON、Array、Object、String、Number、RegExp、Promise、async/await、Map、Set、Date、Math
+• 标准 JS：JSON / Array / Object / String / Number / RegExp / Promise / async/await / Map / Set / Date / Math
 
-严禁使用（会直接报错终止运行）：
-require() / import — 无模块系统
-process、fs、Buffer、child_process、path — 无 Node.js 内置模块
-DOMParser、document、window — 无浏览器 DOM
-console — 无效（沙箱内无输出管道）
-setTimeout / setInterval、atob / btoa、TextDecoder / TextEncoder
+严禁（直接报错终止）：require/import · process/fs/Buffer/child_process · DOMParser/document/window · console · setTimeout/setInterval · atob/btoa · TextDecoder/TextEncoder
+HTML 解析：只能用正则或字符串方法。
 
-HTML 解析：必须用正则表达式或字符串方法，不能使用任何 DOM API。
+可用工具（探查数据源、辅助编写脚本）：
+• webFetch(url)：获取页面内容（HTML 已预处理去噪）
+• webFetchBrowser(url)：无头浏览器渲染，捕获动态页面及 XHR/Fetch 请求
+• webSearch(query)：查找 API 文档、实体 ID 等辅助信息
+• rssRadar(query)：查询 RSS 路由数据库（当 URL 是网页而非 RSS 时可用）
+• validateScript(script)：在沙箱中执行脚本并做 LLM 质量审查（必须调用）
 
 脚本要求：
-1. 每个 CollectedItem 必须包含 title（字符串）和 url（字符串）
-2. publishedAt（ISO 8601 字符串，精确到秒）—— **必须尽力提取每条内容的真实发布时间**：
-   - RSS/Atom：从 pubDate / published / dc:date / updated 字段解析，用 new Date(pub).toISOString() 转换
-   - HTML/API：从 <time> 标签、datetime 属性、JSON 字段（publishedAt / created_at / date 等）、meta 标签中提取
-   - 若只能获取到日期字符串（如 "2024-01-15"）：直接 new Date("2024-01-15").toISOString() 得到 "2024-01-15T00:00:00.000Z"
-   - 若数据源确实不提供任何时间信息，省略此字段（服务端会自动用采集时间兜底）
-3. 可选字段：summary、thumbnailUrl
-4. 若页面无数据或解析失败，直接返回空数组 []；严禁构造虚假兜底条目（如 items.push({ title: '...', url: sourceUrl }) 之类的 fallback）
-5. 【域名约束】脚本中所有 fetch 调用的 URL 必须限制在 **{{domain}}** 域名范围内，禁止访问其他第三方网站
-6. 【监控条件处理】若监控条件不为"无"，则：
-   - 分析监控条件，确定需要提取的指标（如价格、数量、评分等）
-   - 为每个 CollectedItem 增加以下字段：
-     - criteriaResult: 'matched' | 'not_matched' | 'invalid'
-       · 'matched'：成功提取到指标且满足监控条件
-       · 'not_matched'：成功提取到指标但不满足条件
-       · 'invalid'：无法从该条目提取到指标数据
-     - metricValue: string（可选）：提取到的原始指标值，用于展示，如 "¥299"、"1,234 stars"
-   - 若整个数据源结构无法提供监控指标，所有条目均设 criteriaResult: 'invalid'
+1. 必填：title（字符串）、url（字符串）
+2. publishedAt（ISO 8601 精确到秒）—— 必须尽力提取真实发布时间：
+   - RSS/Atom：解析 pubDate / published / updated / dc:date / dc:modified
+   - HTML/API：提取 <time> 标签 datetime 属性、JSON 日期字段（publishedAt / created_at / date 等）、meta 标签
+   - 仅有日期字符串（如 "2024-01-15"）：new Date("2024-01-15").toISOString() → "2024-01-15T00:00:00.000Z"
+   - 数据源确实无时间信息：省略，服务端自动兜底
+3. 可选：summary、thumbnailUrl
+4. 无数据或解析失败返回 []；严禁构造虚假兜底条目（如 items.push({ title: '...', url: sourceUrl })）
+5. 域名约束：脚本所有 fetch URL 必须在 {{domain}} 域名范围内，禁止跨域访问
+6. 监控条件（不为"无"时）：每条记录添加 criteriaResult（'matched'|'not_matched'|'invalid'）和 metricValue（原始指标值，可选）
 
-先按以下步骤确定最佳采集方式：
+---
 
-**第一步：检查是否有可用的 RSS feed**
-使用 rssRadar 工具查询数据源网站名称或域名，看是否存在匹配的 RSS 路由。
-- rssRadar 返回的 templateUrl 包含 :param 占位符（如 /bilibili/user/video/:uid），需根据数据源 URL 或上下文推断实际参数值并替换
-- 若找到路由，使用 webFetch 工具直接抓取填好参数的 RSS URL，查看原始 XML 内容，确认包含 <item> 或 <entry> 条目
-- 若 feed 有效：**优先编写基于 RSS 的采集脚本**。
-  RSS/XML 解析必须用 **split + indexOf/slice 字符串方法**，禁止对 XML 标签使用正则表达式（正则在沙箱中处理含 / 的闭合标签极易出错）。
-  标准 RSS 解析模板（直接套用，不要改成正则）：
-  \`\`\`javascript
-  export async function collect() {
-    const res = await fetch('RSS_URL_HERE');
-    if (!res.ok) return [];
-    const xml = await res.text();
-    const items = [];
-    const blocks = xml.split('<item>').slice(1);
-    for (const block of blocks) {
-      const end = block.indexOf('</item>');
-      const item = end > 0 ? block.slice(0, end) : block;
-      function pick(tag) {
-        const open = '<' + tag + '>', close = '</' + tag + '>';
-        const s = item.indexOf(open);
-        if (s < 0) return '';
-        const e = item.indexOf(close, s + open.length);
-        let v = e > 0 ? item.slice(s + open.length, e) : item.slice(s + open.length);
-        if (v.startsWith('<![CDATA[')) v = v.slice(9, v.lastIndexOf(']]>'));
-        return v.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
-      }
-      const title = pick('title');
-      const url   = pick('link') || pick('guid');
-      if (!title || !url) continue;
-      const entry = { title, url };
-      const pub = pick('pubDate') || pick('published') || pick('updated') || pick('dc:date') || pick('dc:modified');
-      if (pub) { try { entry.publishedAt = new Date(pub).toISOString(); } catch {} }
-      const desc = pick('description') || pick('summary');
-      if (desc) entry.summary = desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
-      const imgMatch = (pick('description') || '').match(/src="([^"]+\.(jpg|jpeg|png|webp|gif)[^"]*)"/i);
-      if (imgMatch) entry.thumbnailUrl = imgMatch[1];
-      items.push(entry);
+**第一步：判断数据源类型**
+用 webFetch 直接抓取数据源 URL，根据响应决定方案：
+- 响应含 XML feed 标志（\`<rss\`、\`<feed\`、\`<item\`、\`<entry\`）→ **RSS/Atom 方案**，套用下方模板
+- 响应为 HTML 页面 → **第二步**
+- 响应失败或内容为空 → 改用 **webFetchBrowser** 探查，再走第二步
+
+**RSS/Atom 采集模板**（直接套用，RSS/XML 解析必须用 split+indexOf/slice，禁止对 XML 标签用正则）：
+\`\`\`javascript
+export async function collect() {
+  const res = await fetch('RSS_URL_HERE');
+  if (!res.ok) return [];
+  const xml = await res.text();
+  const items = [];
+  const blocks = xml.split('<item>').slice(1);    // Atom feed: 改为 '<entry>'
+  for (const block of blocks) {
+    const end = block.indexOf('</item>');          // Atom feed: 改为 '</entry>'
+    const item = end > 0 ? block.slice(0, end) : block;
+    function pick(tag) {
+      const open = '<' + tag + '>', close = '</' + tag + '>';
+      const s = item.indexOf(open);
+      if (s < 0) return '';
+      const e = item.indexOf(close, s + open.length);
+      let v = e > 0 ? item.slice(s + open.length, e) : item.slice(s + open.length);
+      if (v.startsWith('<![CDATA[')) v = v.slice(9, v.lastIndexOf(']]>'));
+      return v.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
     }
-    return items;
+    const title = pick('title');
+    const url   = pick('link') || pick('guid');   // Atom feed: 从 <link href="..."> 提取 href 属性值
+    if (!title || !url) continue;
+    const entry = { title, url };
+    const pub = pick('pubDate') || pick('published') || pick('updated') || pick('dc:date') || pick('dc:modified');
+    if (pub) { try { entry.publishedAt = new Date(pub).toISOString(); } catch {} }
+    const desc = pick('description') || pick('summary');
+    if (desc) entry.summary = desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
+    const imgMatch = (pick('description') || '').match(/src="([^"]+\.(jpg|jpeg|png|webp|gif)[^"]*)"/i);
+    if (imgMatch) entry.thumbnailUrl = imgMatch[1];
+    items.push(entry);
   }
-  \`\`\`
-  Atom feed 同理，将 \`<item>\` 替换为 \`<entry>\`，\`<link>\` 替换为从 \`<link href="..."\` 中提取 href。
-- 若 rssRadar 无匹配路由或 webFetch 返回的内容不是有效 XML feed：继续第二步
+  return items;
+}
+\`\`\`
 
-**第二步：检查原始页面结构**
-使用 webFetch 工具获取页面内容，判断页面类型：
-- 若 HTML 包含实际数据（文章列表、商品信息等）→ 根据 HTML 结构编写采集脚本
-- 若 HTML 仅为 SPA 骨架（如仅有 \`<div id="app">\` / \`<div id="root">\`、内容极少）→ 改用 webFetchBrowser 工具，它会用无头浏览器渲染页面并捕获 JSON API 请求；若 capturedRequests 不为空，优先分析其中的 API 端点和响应结构，直接用 fetch 调用该 API 编写采集脚本（无需解析 HTML，在沙箱中同样有效）
-写好后使用 validateScript 工具验证（验证流程：沙箱执行 → 确认采集到 ≥1 条数据 → LLM 质量审查 + 抓取采集 URL 真实性）。
-如验证失败则根据错误信息修复并重试（最多 3 次）；若验证结果中包含 suggestedScript 字段，请优先使用该脚本重新调用 validateScript 验证。
+**第二步：分析 HTML / API 结构（非 RSS 时）**
+- HTML 含实际数据（文章列表、商品信息等）→ 根据 HTML 结构编写采集脚本
+- HTML 为 SPA 骨架（仅 \`<div id="app">\` 等，内容极少）→ 用 webFetchBrowser 渲染，优先分析 capturedRequests 中的 API 端点，直接调用 API 编写脚本
 
-【重要 — 正则表达式中的斜杠（仅 HTML 解析时适用，RSS 解析用上方模板不涉及此问题）】脚本以 JSON 字符串传输，JSON 会将 \\/ 反序列化为 /，导致正则提前闭合、后续字符被误读为 flag，出现 "Invalid regular expression flags" 语法错误。
-解决方案：在正则表达式中需要匹配字面 / 时，用字符类 [/] 替代 \\/。
-示例：匹配 </a> 应写 /[<][/]a>/ 而非 /<\\/a>/。`,
+**验证**
+脚本写好后调用 validateScript（沙箱执行 → 采集 ≥1 条 → LLM 质量审查）。验证失败则按错误修复重试（最多 3 次）；结果含 suggestedScript 时优先用该脚本重新验证。
+
+【正则斜杠陷阱 — 仅 HTML/API 解析时注意】
+脚本以 JSON 字符串传输，\`\\/\` 会被反序列化为 \`/\`，导致正则提前闭合，报 "Invalid regular expression flags"。
+解决：正则中匹配字面 \`/\` 时用字符类 \`[/]\` 代替 \`\\/\`。示例：匹配 \`</a>\` 写 \`/[<][/]a>/\` 而非 \`/<\\/a>/\`。`,
     defaultContent: '',
   },
   {
