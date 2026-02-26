@@ -146,32 +146,38 @@ export const checkFeedToolDef = {
   function: {
     name: 'checkFeed',
     description:
-      'Validate whether a URL is a live RSS/Atom feed. Performs up to three checks:\n' +
+      'Validate one or more RSS/Atom feed URLs in parallel. For each feed, performs up to three checks:\n' +
       '1. (If templateUrl given) URL path matches the rssRadar template pattern — catches wrong :param substitutions before any network call.\n' +
       '2. HTTP 2xx + XML feed markers in the response body.\n' +
-      '3. (If keyword given) Response body contains the keyword — catches mismatched entity IDs (e.g. wrong user ID giving a different channel\'s feed).\n' +
-      'Much cheaper in tokens than webFetch; use this to verify every RSS URL before finalising.',
+      '3. (If keyword given) Response body contains the keyword — catches mismatched entity IDs.\n' +
+      'Pass all feeds in a single call to maximise parallelism. Much cheaper in tokens than webFetch.',
     parameters: {
       type: 'object',
       properties: {
-        url: {
-          type: 'string',
-          description: 'The concrete RSS/Atom feed URL to validate (all :param placeholders already filled in)',
-        },
-        templateUrl: {
-          type: 'string',
-          description:
-            'The rssRadar templateUrl this URL was built from (e.g. "https://rsshub.app/bilibili/user/video/:uid"). ' +
-            'Used to verify the URL structure is correct before making a network request.',
-        },
-        keyword: {
-          type: 'string',
-          description:
-            'Optional keyword to search for in the feed body (case-insensitive). ' +
-            'Use the channel/author/entity name. If absent from a reachable feed, the entity ID in the URL is likely wrong.',
+        feeds: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              url: {
+                type: 'string',
+                description: 'Concrete RSS/Atom feed URL (all :param placeholders already filled in)',
+              },
+              templateUrl: {
+                type: 'string',
+                description: 'The rssRadar templateUrl this URL was built from (e.g. "https://rsshub.app/bilibili/user/video/:uid"). Used to verify URL structure before any network request.',
+              },
+              keyword: {
+                type: 'string',
+                description: 'Channel/author/entity name to search in the feed body (case-insensitive). Absence in a live feed means the entity ID is likely wrong.',
+              },
+            },
+            required: ['url'],
+          },
+          description: 'List of feeds to validate in parallel',
         },
       },
-      required: ['url'],
+      required: ['feeds'],
     },
   },
 };

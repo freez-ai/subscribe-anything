@@ -172,9 +172,12 @@ export async function generateScriptAgent(
         const args = JSON.parse(tc.args || '{}');
 
         if (tc.name === 'rssRadar') {
-          const routes = await rssRadar(args.query ?? source.url);
-          resultContent = JSON.stringify(routes);
-          onProgress?.(`RSS 路由查询：找到 ${routes.length} 条`);
+          const queries: string[] = args.queries ?? (args.query ? [args.query] : [source.url]);
+          const results = await Promise.all(queries.map((q) => rssRadar(q)));
+          const combined = results.map((routes, i) => ({ query: queries[i], routes }));
+          resultContent = JSON.stringify(combined);
+          const total = results.reduce((s, r) => s + r.length, 0);
+          onProgress?.(`RSS 路由查询：找到 ${total} 条`);
         } else if (tc.name === 'webSearch') {
           const query = args.query ?? '';
           onProgress?.(`网络搜索：${query}`);

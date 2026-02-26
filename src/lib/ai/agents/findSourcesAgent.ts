@@ -133,13 +133,15 @@ export async function findSourcesAgent(
       let resultContent = '';
       try {
         if (tc.name === 'rssRadar') {
-          const { query } = JSON.parse(tc.args);
-          const routes = await rssRadar(query);
-          resultContent = JSON.stringify(routes);
+          const queries: string[] = JSON.parse(tc.args).queries ?? [];
+          const results = await Promise.all(queries.map((q) => rssRadar(q)));
+          const combined = results.map((routes, i) => ({ query: queries[i], routes }));
+          resultContent = JSON.stringify(combined);
+          const total = results.reduce((s, r) => s + r.length, 0);
           emit({
             type: 'tool_result',
             name: 'rssRadar',
-            resultSummary: `找到 ${routes.length} 条 RSS 路由`,
+            resultSummary: `${queries.length} 个查询，共找到 ${total} 条 RSS 路由`,
             success: true,
           });
         } else if (tc.name === 'webSearch') {
@@ -171,21 +173,24 @@ export async function findSourcesAgent(
             success: true,
           });
         } else if (tc.name === 'checkFeed') {
-          const { url: feedUrl, keyword, templateUrl } = JSON.parse(tc.args);
-          const result = await checkFeed(feedUrl, keyword, templateUrl);
-          resultContent = JSON.stringify(result);
-          const summary = result.valid
-            ? `有效 RSS/Atom feed (HTTP ${result.status})${keyword ? '，关键词匹配' : ''}`
-            : result.templateMismatch
-              ? `URL 结构与模板不匹配，参数替换有误`
-              : result.keywordFound === false
-                ? `Feed 可访问但未找到关键词"${keyword}"，实体 ID 可能有误`
-                : `无效 (HTTP ${result.status})`;
+          const feeds: { url: string; keyword?: string; templateUrl?: string }[] =
+            JSON.parse(tc.args).feeds ?? [];
+          const results = await Promise.all(
+            feeds.map((f) => checkFeed(f.url, f.keyword, f.templateUrl))
+          );
+          resultContent = JSON.stringify(results.map((r, i) => ({ url: feeds[i].url, ...r })));
+          const validCount = results.filter((r) => r.valid).length;
+          const summary = results.map((r, i) => {
+            if (r.valid) return `✓ ${feeds[i].url}`;
+            if (r.templateMismatch) return `✗ ${feeds[i].url} (结构有误)`;
+            if (r.keywordFound === false) return `✗ ${feeds[i].url} (实体 ID 有误)`;
+            return `✗ ${feeds[i].url} (HTTP ${r.status})`;
+          }).join('\n');
           emit({
             type: 'tool_result',
             name: 'checkFeed',
-            resultSummary: summary,
-            success: result.valid,
+            resultSummary: `${feeds.length} 个 feed，${validCount} 个有效\n${summary}`,
+            success: validCount > 0,
           });
         } else {
         }

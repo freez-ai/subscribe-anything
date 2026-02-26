@@ -20,17 +20,17 @@ const DEFAULT_PROMPT_TEMPLATES = [
 3. 可通过程序化方式抓取（有 RSS、API 或稳定的 HTML 结构）
 
 **第二步：为每个数据源查询 RSS 路由**
-对每个找到的网站，必须调用 rssRadar 工具查询其域名或网站名称。rssRadar 几乎没有调用成本，且很多网站都有现成的 RSS 路由。
+将所有找到的网站域名或名称**合并为一次** rssRadar 调用（传入 queries 列表）。rssRadar 几乎没有调用成本，且很多网站都有现成的 RSS 路由。
 - rssRadar 返回匹配路由：templateUrl 包含 :param 占位符，根据上下文推断参数值（用户 ID、专栏 ID 等）并替换；若参数无法直接推断，先用 webSearch 搜索确认后再填入
 - rssRadar 无匹配路由：保留原始网页 URL；**严禁自行拼造 RSSHub 路径**（如 /zhihu/search/xxx）——只有 rssRadar 返回的 templateUrl 才是真实路由
 
 **第三步：验证 RSS URL 可用性**
-对第二步中生成的每个 RSS URL，调用 checkFeed 工具，同时传入：
+将所有 RSS URL **合并为一次** checkFeed 调用（传入 feeds 列表，并行验证）。每项传入：
 - `url`：填好参数的完整 RSS URL
-- `templateUrl`：该 URL 所对应的 rssRadar templateUrl（用于验证 :param 是否全部被替换且路径结构正确）
-- `keyword`：频道名、作者名或实体名称（用于确认 feed 内容属于正确的实体）
+- `templateUrl`：该 URL 所对应的 rssRadar templateUrl（验证 :param 是否全部替换且路径正确）
+- `keyword`：频道名、作者名或实体名称（确认 feed 内容属于正确实体）
 
-根据返回结果处理：
+根据每项返回结果处理：
 - `valid: true` → 保留
 - `templateMismatch: true` → URL 结构有误（:param 未完整替换或路径错误）：修正后重新 checkFeed
 - `keywordFound: false` → URL 结构正确但 feed 不含关键词（实体 ID 有误）：用 webSearch 找到正确 ID → 重新填入 templateUrl → 再次 checkFeed
@@ -75,7 +75,7 @@ HTML 解析：只能用正则或字符串方法。
 • webFetch(url)：获取页面内容（HTML 已预处理去噪）
 • webFetchBrowser(url)：无头浏览器渲染，捕获动态页面及 XHR/Fetch 请求
 • webSearch(query)：查找 API 文档、实体 ID 等辅助信息
-• rssRadar(query)：查询 RSS 路由数据库（当 URL 是网页而非 RSS 时可用）
+• rssRadar(queries)：查询 RSS 路由数据库（当 URL 是网页而非 RSS 时可用）
 • validateScript(script)：在沙箱中执行脚本并做 LLM 质量审查（必须调用）
 
 脚本要求：

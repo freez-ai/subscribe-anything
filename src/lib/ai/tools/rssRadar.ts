@@ -124,19 +124,19 @@ export const rssRadarToolDef = {
   function: {
     name: 'rssRadar',
     description:
-      'Search the RSSHub radar rules index to find available RSS feed routes for a website. ' +
-      'Input a domain (e.g. "bilibili.com"), website name (e.g. "哔哩哔哩"), or a keyword. ' +
-      'Returns route templates — each templateUrl has :param placeholders you must fill in. ' +
-      'After choosing a route and substituting real parameter values, validate it with rssFetch.',
+      'Search the RSSHub radar rules index to find available RSS feed routes for one or more websites. ' +
+      'Pass all queries in a single call — they are executed in parallel. ' +
+      'Returns route templates — each templateUrl has :param placeholders you must fill in.',
     parameters: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'Domain, website name, or keyword (e.g. "bilibili.com", "github", "YouTube")',
+        queries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of domains, website names, or keywords (e.g. ["bilibili.com", "zhihu.com"])',
         },
       },
-      required: ['query'],
+      required: ['queries'],
     },
   },
 };
