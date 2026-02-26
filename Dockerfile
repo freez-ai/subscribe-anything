@@ -9,12 +9,15 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --loglevel=error
 
 COPY . .
 # Ensure these directories exist (may be absent before first build/migration)
 RUN mkdir -p public drizzle
 RUN npm run build
+
+# Remove devDependencies so the runner stage gets a lean node_modules
+RUN npm prune --omit=dev
 
 # ─── Stage 2: Runner ─────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runner
