@@ -30,7 +30,7 @@
     "highlight.js": "^11.11.1",
     "isolated-vm": "^6.0.2",
     "lucide-react": "^0.575.0",
-    "next": "^15.2.0",
+    "next": "^15.5.12",
     "node-cron": "^4.2.1",
     "openai": "^6.24.0",
     "p-limit": "^7.3.0",
