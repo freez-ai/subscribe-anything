@@ -20,7 +20,10 @@
       "mcp__chrome-devtools__wait_for",
       "Bash(echo exit:$?:*)",
       "Bash(find src:*)",
-      "Bash(echo EXIT:$?:*)"
+      "Bash(echo EXIT:$?:*)",
+      "Bash(git:*)",
+      "Bash(NODE_OPTIONS=\"--trace-deprecation\" node:*)",
+      "Bash(dir D:\\\\code\\\\subscribe-anything\\\\favicon:*)"
     ]
   }
 }

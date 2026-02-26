@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="public/android-chrome-512x512.png" width="120" alt="Subscribe Anything Logo" />
+
 # Subscribe Anything · 订阅万物
 
 **AI-powered intelligent data subscription platform**
