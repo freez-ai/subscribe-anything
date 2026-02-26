@@ -12,6 +12,8 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+# Ensure public directory exists (Next.js treats it as optional)
+RUN mkdir -p public
 RUN npm run build
 
 # ─── Stage 2: Runner ─────────────────────────────────────────────────────────
