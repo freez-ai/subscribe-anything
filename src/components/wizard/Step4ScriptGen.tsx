@@ -109,14 +109,14 @@ export default function Step4ScriptGen({ state, onStateChange, onNext, onBack }:
         updateStatus(globalIdx, {
           status: 'success',
           script: event.script as string,
-          cronExpression: (event.cronExpression as string) || '0 */6 * * *',
+          cronExpression: (event.cronExpression as string) || '0 * * * *',
           items: (event.items as CollectedItem[]) || [],
         });
       } else if (evStatus === 'unverified') {
         updateStatus(globalIdx, {
           status: 'unverified',
           script: event.script as string,
-          cronExpression: (event.cronExpression as string) || '0 */6 * * *',
+          cronExpression: (event.cronExpression as string) || '0 * * * *',
         });
       } else if (evStatus === 'failed') {
         updateStatus(globalIdx, {

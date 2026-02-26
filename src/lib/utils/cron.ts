@@ -6,6 +6,10 @@ export interface CronPreset {
 }
 
 export const CRON_PRESETS: CronPreset[] = [
+  { label: '每 1 分钟', value: '* * * * *' },
+  { label: '每 5 分钟', value: '*/5 * * * *' },
+  { label: '每 10 分钟', value: '*/10 * * * *' },
+  { label: '每 30 分钟', value: '*/30 * * * *' },
   { label: '每 1 小时', value: '0 * * * *' },
   { label: '每 2 小时', value: '0 */2 * * *' },
   { label: '每 6 小时', value: '0 */6 * * *' },
