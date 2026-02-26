@@ -148,6 +148,15 @@ export async function collect(sourceId: string): Promise<CollectResult> {
       })
       .where(eq(subscriptions.id, source.subscriptionId))
       .run();
+
+    createNotification(db, {
+      type: 'cards_collected',
+      title: `新增 ${newItems} 条消息卡片`,
+      body: source.title,
+      subscriptionId: subscription.id,
+      relatedEntityType: 'source',
+      relatedEntityId: source.id,
+    });
   }
 
   console.log(`[Collector] source=${sourceId} new=${newItems} skipped=${skipped}`);

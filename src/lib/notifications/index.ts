@@ -2,7 +2,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { notifications } from '@/lib/db/schema';
 
 interface NotificationPayload {
-  type: 'source_created' | 'source_fixed' | 'source_failed';
+  type: 'source_created' | 'source_fixed' | 'source_failed' | 'cards_collected';
   title: string;
   body?: string;
   subscriptionId?: string;

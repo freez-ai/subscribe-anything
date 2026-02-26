@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, LayoutGrid, AlignJustify, ExternalLink,
-  X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2,
+  X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2, Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -126,13 +126,14 @@ export default function SubscriptionDetailPage() {
       await Promise.all(
         enabled.map((s) => fetch(`/api/sources/${s.id}/trigger`, { method: 'POST' }))
       );
+      await fetchNotifs();
       await loadMore(0, true);
       const subRes = await fetch(`/api/subscriptions/${id}`);
       if (subRes.ok) setSub(await subRes.json());
     } finally {
       setRefreshing(false);
     }
-  }, [id, refreshing, loadMore]);
+  }, [id, refreshing, loadMore, fetchNotifs]);
 
   /* ── Pull-to-refresh (mobile) ── */
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -203,8 +204,12 @@ export default function SubscriptionDetailPage() {
     );
   }
 
-  /* source_created notifications are informational only — skip display */
-  const visibleNotifs = notifs.filter((n) => n.type !== 'source_created');
+  /* cards_collected: aggregate count for toast display */
+  const cardsCollectedNotifs = notifs.filter((n) => n.type === 'cards_collected');
+  const totalNewCards = cardsCollectedNotifs.reduce((sum, n) => {
+    const m = n.title.match(/\d+/);
+    return sum + (m ? parseInt(m[0]) : 0);
+  }, 0);
 
   return (
     <div
@@ -280,31 +285,12 @@ export default function SubscriptionDetailPage() {
         </div>
       </div>
 
-      {/* Notification banners — source_created filtered out */}
-      {visibleNotifs.map((n) => (
-        <div key={n.id} className={[
-          'flex items-start gap-3 rounded-lg border px-4 py-3 mb-2 text-sm',
-          n.type === 'source_failed'
-            ? 'border-destructive/30 bg-destructive/10 text-destructive'
-            : 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400',
-        ].join(' ')}>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium">{n.title}</p>
-            {n.body && <p className="text-xs mt-0.5 opacity-80">{n.body}</p>}
-            {n.type === 'source_failed' && (
-              <Link
-                href={`/subscriptions/${id}/sources`}
-                className="text-xs underline underline-offset-2 mt-1 inline-block opacity-80 hover:opacity-100"
-              >
-                前往订阅源 →
-              </Link>
-            )}
-          </div>
-          <button onClick={() => dismissNotif(n.id)} className="flex-shrink-0 opacity-60 hover:opacity-100">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ))}
+      {/* cards_collected toast — auto-dismisses after 3 s */}
+      <CardsCollectedToast
+        notifs={cardsCollectedNotifs}
+        totalNewCards={totalNewCards}
+        onDismiss={dismissNotif}
+      />
 
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-3">
@@ -406,6 +392,41 @@ export default function SubscriptionDetailPage() {
       {analyzeOpen && (
         <AnalyzeDialog subscriptionId={id} onClose={() => setAnalyzeOpen(false)} />
       )}
+    </div>
+  );
+}
+
+/* ── Cards Collected Toast ── */
+function CardsCollectedToast({
+  notifs,
+  totalNewCards,
+  onDismiss,
+}: {
+  notifs: Notification[];
+  totalNewCards: number;
+  onDismiss: (id: string) => Promise<void>;
+}) {
+  const [visible, setVisible] = useState(false);
+  const notifsKey = notifs.map((n) => n.id).join(',');
+
+  useEffect(() => {
+    if (!notifsKey) return;
+    setVisible(true);
+    const ids = notifsKey.split(',');
+    const timer = setTimeout(async () => {
+      setVisible(false);
+      await Promise.all(ids.map((nid) => onDismiss(nid)));
+    }, 3000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifsKey]);
+
+  if (!visible || notifs.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg px-4 py-2.5 text-sm bg-primary text-primary-foreground shadow-lg flex items-center gap-2 whitespace-nowrap">
+      <Bell className="h-4 w-4 flex-shrink-0" />
+      <span>新增 {totalNewCards} 条消息卡片</span>
     </div>
   );
 }

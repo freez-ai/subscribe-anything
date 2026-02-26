@@ -124,7 +124,7 @@ export const messageCards = sqliteTable('message_cards', {
 export const notifications = sqliteTable('notifications', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
   type: text('type', {
-    enum: ['source_created', 'source_fixed', 'source_failed'],
+    enum: ['source_created', 'source_fixed', 'source_failed', 'cards_collected'],
   }).notNull(),
   title: text('title').notNull(),
   body: text('body'),

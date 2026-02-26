@@ -120,8 +120,8 @@ export default function SourcesPage() {
         <span className="text-sm text-muted-foreground">{sources.length} 个源</span>
       </div>
 
-      {/* Notification banners */}
-      {notifs.map((n) => (
+      {/* Notification banners — source notifications only */}
+      {notifs.filter((n) => n.type !== 'cards_collected').map((n) => (
         <div key={n.id} className={[
           'flex items-start gap-3 rounded-lg border px-4 py-3 mb-2 text-sm',
           n.type === 'source_failed'
