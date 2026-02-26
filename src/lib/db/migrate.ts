@@ -26,14 +26,14 @@ const DEFAULT_PROMPT_TEMPLATES = [
 
 **第三步：验证 RSS URL 可用性**
 将所有 RSS URL **合并为一次** checkFeed 调用（传入 feeds 列表，并行验证）。每项传入：
-- `url`：填好参数的完整 RSS URL
-- `templateUrl`：该 URL 所对应的 rssRadar templateUrl（验证 :param 是否全部替换且路径正确）
-- `keyword`：频道名、作者名或实体名称（确认 feed 内容属于正确实体）
+- \`url\`：填好参数的完整 RSS URL
+- \`templateUrl\`：该 URL 所对应的 rssRadar templateUrl（验证 :param 是否全部替换且路径正确）
+- \`keyword\`：频道名、作者名或实体名称（确认 feed 内容属于正确实体）
 
 根据每项返回结果处理：
-- `valid: true` → 保留
-- `templateMismatch: true` → URL 结构有误（:param 未完整替换或路径错误）：修正后重新 checkFeed
-- `keywordFound: false` → URL 结构正确但 feed 不含关键词（实体 ID 有误）：用 webSearch 找到正确 ID → 重新填入 templateUrl → 再次 checkFeed
+- \`valid: true\` → 保留
+- \`templateMismatch: true\` → URL 结构有误（:param 未完整替换或路径错误）：修正后重新 checkFeed
+- \`keywordFound: false\` → URL 结构正确但 feed 不含关键词（实体 ID 有误）：用 webSearch 找到正确 ID → 重新填入 templateUrl → 再次 checkFeed
 - 其他失败（HTTP 错误等）→ 同上修复流程；修复仍失败则回退为原始网页 URL
 - 原始网页 URL（非 RSS）无需验证
 
