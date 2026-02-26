@@ -41,7 +41,7 @@ async function searchTavily(query: string, apiKey: string): Promise<SearchResult
   return (data.results ?? []).map((r: { title: string; url: string; content: string }) => ({
     title: r.title,
     url: r.url,
-    snippet: r.content,
+    snippet: (r.content ?? '').slice(0, 200),
   }));
 }
 
@@ -65,7 +65,7 @@ async function searchSerper(query: string, apiKey: string): Promise<SearchResult
   return (data.organic ?? []).map((r: { title: string; link: string; snippet: string }) => ({
     title: r.title,
     url: r.link,
-    snippet: r.snippet ?? '',
+    snippet: (r.snippet ?? '').slice(0, 200),
   }));
 }
 

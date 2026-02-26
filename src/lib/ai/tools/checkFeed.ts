@@ -20,7 +20,7 @@ export interface CheckFeedResult {
   status: number;
   /** Present when `templateUrl` was supplied and the URL path does not match the pattern. */
   templateMismatch?: boolean;
-  /** Present when `keyword` was supplied. */
+  /** Present when `keywords` was supplied. */
   keywordFound?: boolean;
   /** Guidance for the LLM when a check fails. */
   hint?: string;
@@ -44,7 +44,7 @@ function buildTemplatePattern(templateUrl: string): RegExp | null {
 
 export async function checkFeed(
   url: string,
-  keyword?: string,
+  keywords?: string[],
   templateUrl?: string,
 ): Promise<CheckFeedResult> {
   // ── Check 1: template pattern (free, no network) ──────────────────────────
@@ -77,7 +77,7 @@ export async function checkFeed(
   // ── Check 2 & 3: HTTP + XML markers ───────────────────────────────────────
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const maxBytes = keyword ? MAX_READ_BYTES_WITH_KW : MAX_READ_BYTES_NO_KW;
+  const maxBytes = keywords?.length ? MAX_READ_BYTES_WITH_KW : MAX_READ_BYTES_NO_KW;
 
   try {
     const res = await fetch(url, {
@@ -118,15 +118,16 @@ export async function checkFeed(
       return { valid: false, status: res.status };
     }
 
-    // ── Check 4: keyword presence ──────────────────────────────────────────
-    if (keyword) {
-      const keywordFound = text.toLowerCase().includes(keyword.toLowerCase());
+    // ── Check 4: keywords presence (any match passes) ──────────────────────
+    if (keywords?.length) {
+      const textLower = text.toLowerCase();
+      const keywordFound = keywords.some((kw) => textLower.includes(kw.toLowerCase()));
       if (!keywordFound) {
         return {
           valid: false,
           status: res.status,
           keywordFound: false,
-          hint: `Feed is reachable but does not contain "${keyword}". The entity ID in the URL is likely wrong — use webSearch to find the correct ID and update the URL.`,
+          hint: `Feed is reachable but does not contain any of [${keywords.map((k) => `"${k}"`).join(', ')}]. The entity ID in the URL is likely wrong — use webSearch to find the correct ID and update the URL.`,
         };
       }
       return { valid: true, status: res.status, keywordFound: true };
@@ -149,7 +150,7 @@ export const checkFeedToolDef = {
       'Validate one or more RSS/Atom feed URLs in parallel. For each feed, performs up to three checks:\n' +
       '1. (If templateUrl given) URL path matches the rssRadar template pattern — catches wrong :param substitutions before any network call.\n' +
       '2. HTTP 2xx + XML feed markers in the response body.\n' +
-      '3. (If keyword given) Response body contains the keyword — catches mismatched entity IDs.\n' +
+      '3. (If keywords given) Response body contains at least one of the keywords — catches mismatched entity IDs.\n' +
       'Pass all feeds in a single call to maximise parallelism. Much cheaper in tokens than webFetch.',
     parameters: {
       type: 'object',
@@ -167,9 +168,10 @@ export const checkFeedToolDef = {
                 type: 'string',
                 description: 'The rssRadar templateUrl this URL was built from (e.g. "https://rsshub.app/bilibili/user/video/:uid"). Used to verify URL structure before any network request.',
               },
-              keyword: {
-                type: 'string',
-                description: 'Channel/author/entity name to search in the feed body (case-insensitive). Absence in a live feed means the entity ID is likely wrong.',
+              keywords: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Channel/author/entity names and aliases to search in the feed body (case-insensitive). Valid if ANY keyword is found — pass all known aliases to avoid false negatives.',
               },
             },
             required: ['url'],

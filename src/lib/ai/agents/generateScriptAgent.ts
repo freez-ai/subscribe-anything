@@ -100,8 +100,8 @@ export async function generateScriptAgent(
   let sandboxUnavailable = false;
   let lastScriptAttempted: string | undefined;
 
-  // Agentic loop — max 12 iterations total (fetch + multiple validate retries)
-  for (let iteration = 0; iteration < 12; iteration++) {
+  // Agentic loop — max 32 iterations total (fetch + multiple validate retries)
+  for (let iteration = 0; iteration < 32; iteration++) {
     let textBuffer = '';
     const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
 

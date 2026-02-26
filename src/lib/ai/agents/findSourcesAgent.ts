@@ -65,8 +65,8 @@ export async function findSourcesAgent(
   let lastTextBuffer = '';
   let allTextBuffer = '';
 
-  // Agentic loop — max 8 iterations to prevent runaway
-  for (let iteration = 0; iteration < 8; iteration++) {
+  // Agentic loop — max 32 iterations to prevent runaway
+  for (let iteration = 0; iteration < 32; iteration++) {
     let textBuffer = '';
     const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
 
@@ -173,10 +173,10 @@ export async function findSourcesAgent(
             success: true,
           });
         } else if (tc.name === 'checkFeed') {
-          const feeds: { url: string; keyword?: string; templateUrl?: string }[] =
+          const feeds: { url: string; keywords?: string[]; templateUrl?: string }[] =
             JSON.parse(tc.args).feeds ?? [];
           const results = await Promise.all(
-            feeds.map((f) => checkFeed(f.url, f.keyword, f.templateUrl))
+            feeds.map((f) => checkFeed(f.url, f.keywords, f.templateUrl))
           );
           resultContent = JSON.stringify(results.map((r, i) => ({ url: feeds[i].url, ...r })));
           const validCount = results.filter((r) => r.valid).length;

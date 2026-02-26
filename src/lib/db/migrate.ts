@@ -14,26 +14,27 @@ const DEFAULT_PROMPT_TEMPLATES = [
     content: `你是一个专业的信息源分析师。用户希望订阅关于"{{topic}}"的内容，监控条件为"{{criteria}}"。
 
 **第一步：网络搜索**
-使用 webSearch 工具搜索互联网，找到 5-10 个高质量的数据源。优先选择：
-1. 有规律地更新内容（日更/周更）
-2. 内容与主题高度相关
-3. 可通过程序化方式抓取（有 RSS、API 或稳定的 HTML 结构）
+使用 webSearch 工具搜索互联网，找到 5-10 个高质量的数据源。
+- 搜索确认主题对应实体的**标准名称、官方名称及已知别名/昵称**
+- 根据上一步获取的名称搜素可靠的订阅源网址
+- 优先选择：有规律地更新内容（日更/周更）、内容与主题高度相关、可通过程序化方式抓取（有 RSS、API 或稳定的 HTML 结构）
 
 **第二步：为每个数据源查询 RSS 路由**
-将所有找到的网站域名或名称**合并为一次** rssRadar 调用（传入 queries 列表）。rssRadar 几乎没有调用成本，且很多网站都有现成的 RSS 路由。
-- rssRadar 返回匹配路由：templateUrl 包含 :param 占位符，根据上下文推断参数值（用户 ID、专栏 ID 等）并替换；若参数无法直接推断，先用 webSearch 搜索确认后再填入
-- rssRadar 无匹配路由：保留原始网页 URL；**严禁自行拼造 RSSHub 路径**（如 /zhihu/search/xxx）——只有 rssRadar 返回的 templateUrl 才是真实路由
+将所有找到的网站**合并为一次** rssRadar 调用（传入 queries 列表）。rssRadar 几乎没有调用成本，且很多网站都有现成的 RSS 路由。
+- **queries 只传裸域名**（如 bilibili.com、zhihu.com），不要传完整 URL、路径或用户 ID（如 space.bilibili.com/346563107 会匹配不到任何路由）
+- rssRadar 返回匹配路由：templateUrl 包含 :param 占位符，所需参数值（用户 ID、专栏 ID 等）通常已在第一步的搜索结果中获取，直接填入即可；**无需再次搜索**（仅当第三步验证失败时才需补充搜索）
+- rssRadar 无匹配路由：保留原始网页 URL；**严禁自行拼造 RSSHub 路径**（如 /zhihu/search/xxx），只有 rssRadar 返回的 templateUrl 才是真实路由
 
 **第三步：验证 RSS URL 可用性**
 将所有 RSS URL **合并为一次** checkFeed 调用（传入 feeds 列表，并行验证）。每项传入：
 - \`url\`：填好参数的完整 RSS URL
 - \`templateUrl\`：该 URL 所对应的 rssRadar templateUrl（验证 :param 是否全部替换且路径正确）
-- \`keyword\`：频道名、作者名或实体名称（确认 feed 内容属于正确实体）
+- \`keywords\`：实体的所有已知名称和别名组成的数组（任一命中即验证通过，避免因名称变体导致误判）
 
 根据每项返回结果处理：
 - \`valid: true\` → 保留
 - \`templateMismatch: true\` → URL 结构有误（:param 未完整替换或路径错误）：修正后重新 checkFeed
-- \`keywordFound: false\` → URL 结构正确但 feed 不含关键词（实体 ID 有误）：用 webSearch 找到正确 ID → 重新填入 templateUrl → 再次 checkFeed
+- \`keywordFound: false\` → URL 结构正确但 feed 不含任何关键词（实体 ID 有误）：用 webSearch 搜索实体名称（如"张三 bilibili"）从页面读取正确 ID → 重新填入 templateUrl → 再次 checkFeed
 - 其他失败（HTTP 错误等）→ 同上修复流程；修复仍失败则回退为原始网页 URL
 - 原始网页 URL（非 RSS）无需验证
 
@@ -42,10 +43,9 @@ const DEFAULT_PROMPT_TEMPLATES = [
 - \`title\`：数据源名称
 - \`url\`：经过验证的 URL（有效 RSS 优先，否则为原始页面 URL）
 - \`description\`：内容特点、更新频率及是否含监控指标（RSS 请注明路由名称；回退网页 URL 请注明原因）
-- \`recommended\`：true = 质量高、更新频繁、抓取难度低（有效 RSS 优先标记）；false = 可订阅但质量或可访问性一般
+- \`recommended\`：true = 质量高、更新频繁、抓取难度低（有效 RSS 优先标记）；false = 可订阅但质量或可访问性一般或无法满足监控条件
 - \`canProvideCriteria\`（仅当监控条件不为"无"时）：true = 能抓到评估监控条件所需的指标数据；false = 无法获取
 
-注意：监控条件不为"无"时，canProvideCriteria=false 的数据源不应标记 recommended=true。
 综合内容质量、更新频率、抓取难度，将最优质的 2-4 个源标记 recommended: true。`,
     defaultContent: '',
   },

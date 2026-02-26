@@ -126,14 +126,16 @@ export const rssRadarToolDef = {
     description:
       'Search the RSSHub radar rules index to find available RSS feed routes for one or more websites. ' +
       'Pass all queries in a single call — they are executed in parallel. ' +
-      'Returns route templates — each templateUrl has :param placeholders you must fill in.',
+      'Returns route templates — each templateUrl has :param placeholders you must fill in. ' +
+      'IMPORTANT: queries must be bare domain names only (e.g. "bilibili.com", "zhihu.com") — ' +
+      'do NOT include paths, user IDs, or full URLs. Full URLs will not match any routes.',
     parameters: {
       type: 'object',
       properties: {
         queries: {
           type: 'array',
           items: { type: 'string' },
-          description: 'List of domains, website names, or keywords (e.g. ["bilibili.com", "zhihu.com"])',
+          description: 'List of bare domain names or website names only — no paths or IDs (e.g. ["bilibili.com", "zhihu.com", "微博"])',
         },
       },
       required: ['queries'],
