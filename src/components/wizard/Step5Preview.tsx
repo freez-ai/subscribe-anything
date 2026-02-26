@@ -38,9 +38,26 @@ export default function Step5Preview({
 }: Step5PreviewProps) {
   const [sources, setSources] = useState<GeneratedSource[]>(state.generatedSources);
   const [customCrons, setCustomCrons] = useState<Record<number, string>>({});
+  const [editingTitleIdx, setEditingTitleIdx] = useState<number | null>(null);
+  const [editingTitleValue, setEditingTitleValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [previewSource, setPreviewSource] = useState<GeneratedSource | null>(null);
+
+  const startEditTitle = (idx: number) => {
+    setEditingTitleIdx(idx);
+    setEditingTitleValue(sources[idx].title);
+  };
+
+  const commitEditTitle = () => {
+    if (editingTitleIdx !== null) {
+      const trimmed = editingTitleValue.trim();
+      if (trimmed) updateSource(editingTitleIdx, { title: trimmed });
+    }
+    setEditingTitleIdx(null);
+  };
+
+  const cancelEditTitle = () => setEditingTitleIdx(null);
 
   const deleteSource = (idx: number) => {
     setSources((prev) => prev.filter((_, i) => i !== idx));
@@ -157,7 +174,27 @@ export default function Step5Preview({
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm">{source.title}</span>
+                        {editingTitleIdx === idx ? (
+                          <Input
+                            autoFocus
+                            className="h-7 text-sm font-semibold px-1 py-0 w-auto min-w-0 flex-1"
+                            value={editingTitleValue}
+                            onChange={(e) => setEditingTitleValue(e.target.value)}
+                            onBlur={commitEditTitle}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitEditTitle();
+                              if (e.key === 'Escape') cancelEditTitle();
+                            }}
+                          />
+                        ) : (
+                          <span
+                            className="font-semibold text-sm cursor-pointer hover:underline underline-offset-2"
+                            onClick={() => startEditTitle(idx)}
+                            title="点击编辑名称"
+                          >
+                            {source.title}
+                          </span>
+                        )}
                         <Badge
                           variant="outline"
                           className="text-green-600 border-green-500/50 bg-green-500/10 text-xs"
