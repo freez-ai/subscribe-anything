@@ -74,10 +74,14 @@ export default function WizardShell() {
   };
 
   const handleBack = () => {
-    setState((prev) => ({
-      ...prev,
-      step: Math.max(prev.step - 1, 1) as WizardState['step'],
-    }));
+    setState((prev) => {
+      const newStep = Math.max(prev.step - 1, 1) as WizardState['step'];
+      // Returning to step 1 means the topic/criteria may change — invalidate source cache
+      if (newStep === 1) {
+        return { ...prev, step: newStep, foundSources: [], selectedIndices: [] };
+      }
+      return { ...prev, step: newStep };
+    });
   };
 
   const handleComplete = (subscriptionId: string) => {
