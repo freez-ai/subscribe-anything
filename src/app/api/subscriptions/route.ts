@@ -81,7 +81,7 @@ export async function POST(req: Request) {
             description: srcInput.description || null,
             url: srcInput.url,
             script: srcInput.script,
-            cronExpression: srcInput.cronExpression ?? '0 */6 * * *',
+            cronExpression: srcInput.cronExpression ?? '0 * * * *',
             isEnabled: srcInput.isEnabled !== false,
             status: 'active',
             createdAt: now,

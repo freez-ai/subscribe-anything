@@ -73,7 +73,7 @@ export const sources = sqliteTable('sources', {
   description: text('description'),
   url: text('url').notNull(),
   script: text('script').notNull().default(''),
-  cronExpression: text('cron_expression').notNull().default('0 */6 * * *'),
+  cronExpression: text('cron_expression').notNull().default('0 * * * *'),
   isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
   status: text('status', { enum: ['active', 'failed', 'disabled', 'pending'] })
     .notNull()

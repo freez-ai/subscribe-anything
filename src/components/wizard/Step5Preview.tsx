@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Eye, ExternalLink, Loader2, X } from 'lucide-react';
+import { Eye, ExternalLink, Loader2, Trash2, X } from 'lucide-react';
 import { CRON_PRESETS } from '@/lib/utils/cron';
 import { formatDistanceToNow } from '@/lib/utils/time';
 import type { CollectedItem } from '@/lib/sandbox/contract';
@@ -41,6 +41,10 @@ export default function Step5Preview({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [previewSource, setPreviewSource] = useState<GeneratedSource | null>(null);
+
+  const deleteSource = (idx: number) => {
+    setSources((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const updateSource = (idx: number, patch: Partial<GeneratedSource>) => {
     setSources((prev) => {
@@ -172,6 +176,13 @@ export default function Step5Preview({
                         checked={source.isEnabled}
                         onCheckedChange={(checked) => updateSource(idx, { isEnabled: checked })}
                       />
+                      <button
+                        onClick={() => deleteSource(idx)}
+                        className="ml-1 text-muted-foreground hover:text-destructive transition-colors"
+                        title="删除此数据源"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
 
