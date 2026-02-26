@@ -23,7 +23,7 @@ interface CardItem {
   sourceUrl: string; meetsCriteriaFlag: boolean;
   criteriaResult?: 'matched' | 'not_matched' | 'invalid';
   metricValue?: string | null;
-  readAt: string | null; createdAt: string;
+  readAt: string | null; createdAt: string; publishedAt: string | null;
 }
 interface Notification {
   id: string; type: string; title: string; body: string | null; isRead: boolean;
@@ -459,7 +459,7 @@ function MasonryCard({ card, onClick }: { card: CardItem; onClick: () => void })
           <p className="text-xs text-muted-foreground line-clamp-4 leading-relaxed">{card.summary}</p>
         )}
         <div className="flex items-center mt-1">
-          <span className="text-[11px] text-muted-foreground">{formatDistanceToNow(card.createdAt)}</span>
+          <span className="text-[11px] text-muted-foreground">{formatDistanceToNow(card.publishedAt ?? card.createdAt)}</span>
           {card.criteriaResult && (
             <span className="ml-2">
               <CriteriaResultBadge result={card.criteriaResult} metricValue={card.metricValue} />
@@ -494,7 +494,7 @@ function TimelineCard({ card, onClick }: { card: CardItem; onClick: () => void }
         </p>
         {card.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{card.summary}</p>}
         <div className="flex items-center mt-1 gap-2">
-          <span className="text-[11px] text-muted-foreground">{formatDistanceToNow(card.createdAt)}</span>
+          <span className="text-[11px] text-muted-foreground">{formatDistanceToNow(card.publishedAt ?? card.createdAt)}</span>
           {card.criteriaResult && (
             <CriteriaResultBadge result={card.criteriaResult} metricValue={card.metricValue} />
           )}
