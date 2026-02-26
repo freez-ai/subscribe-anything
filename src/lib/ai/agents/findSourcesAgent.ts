@@ -171,13 +171,18 @@ export async function findSourcesAgent(
             success: true,
           });
         } else if (tc.name === 'checkFeed') {
-          const { url: feedUrl } = JSON.parse(tc.args);
-          const result = await checkFeed(feedUrl);
+          const { url: feedUrl, keyword } = JSON.parse(tc.args);
+          const result = await checkFeed(feedUrl, keyword);
           resultContent = JSON.stringify(result);
+          const summary = result.valid
+            ? `有效 RSS/Atom feed (HTTP ${result.status})${keyword ? '，关键词匹配' : ''}`
+            : result.keywordFound === false
+              ? `Feed 可访问但未找到关键词"${keyword}"，实体 ID 可能有误`
+              : `无效 (HTTP ${result.status})`;
           emit({
             type: 'tool_result',
             name: 'checkFeed',
-            resultSummary: result.valid ? `有效 RSS/Atom feed (HTTP ${result.status})` : `无效 (HTTP ${result.status})`,
+            resultSummary: summary,
             success: result.valid,
           });
         } else {
