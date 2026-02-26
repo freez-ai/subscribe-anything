@@ -18,6 +18,7 @@ import { getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/c
 import type { LLMCallInfo } from '@/lib/ai/client';
 import { webFetch, webFetchToolDef } from '@/lib/ai/tools/webFetch';
 import { webFetchBrowser, webFetchBrowserToolDef } from '@/lib/ai/tools/webFetchBrowser';
+import { webSearch, webSearchToolDef } from '@/lib/ai/tools/webSearch';
 import { validateScript, validateScriptToolDef } from '@/lib/ai/tools/validateScript';
 import { rssRadar, rssRadarToolDef } from '@/lib/ai/tools/rssRadar';
 import { validateScriptAgent } from './validateScriptAgent';
@@ -63,9 +64,13 @@ export async function generateScriptAgent(
 
   if (!tplRow) return { success: false, error: '未找到脚本生成提示模板' };
 
+  let sourceDomain = '';
+  try { sourceDomain = new URL(source.url).hostname; } catch { /* ignore */ }
+
   const systemContent = tplRow.content
     .replace('{{title}}', source.title)
     .replace('{{url}}', source.url)
+    .replace('{{domain}}', sourceDomain)
     .replace('{{description}}', source.description || '无描述')
     .replace('{{criteria}}', source.criteria?.trim() || '无');
 
@@ -103,7 +108,7 @@ export async function generateScriptAgent(
     const stream = llmStream(openai, {
       model: provider.modelId,
       messages,
-      tools: [rssRadarToolDef, webFetchToolDef, webFetchBrowserToolDef, validateScriptToolDef],
+      tools: [rssRadarToolDef, webSearchToolDef, webFetchToolDef, webFetchBrowserToolDef, validateScriptToolDef],
       tool_choice: 'auto',
       stream: true,
       stream_options: { include_usage: true },
@@ -170,6 +175,11 @@ export async function generateScriptAgent(
           const routes = await rssRadar(args.query ?? source.url);
           resultContent = JSON.stringify(routes);
           onProgress?.(`RSS 路由查询：找到 ${routes.length} 条`);
+        } else if (tc.name === 'webSearch') {
+          const query = args.query ?? '';
+          onProgress?.(`网络搜索：${query}`);
+          const results = await webSearch(query);
+          resultContent = JSON.stringify(results);
         } else if (tc.name === 'webFetch') {
           const fetchUrl = args.url ?? source.url;
           onProgress?.(`正在抓取页面: ${fetchUrl}`);
