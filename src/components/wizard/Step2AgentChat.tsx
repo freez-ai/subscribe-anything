@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Search, ScrollText } from 'lucide-react';
+import { ExternalLink, Loader2, Search, ScrollText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -370,11 +370,16 @@ export default function Step2AgentChat({
             disabled={!isDone || selectedCount === 0}
             className="flex-1 md:flex-none"
           >
-            {isStreaming
-              ? '搜索中...'
-              : selectedCount > 0
-                ? `下一步（${selectedCount} 个源）`
-                : '下一步'}
+            {isStreaming ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                分析中
+              </>
+            ) : selectedCount > 0 ? (
+              `下一步（${selectedCount} 个源）`
+            ) : (
+              '下一步'
+            )}
           </Button>
         </div>
       </div>
