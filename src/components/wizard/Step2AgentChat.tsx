@@ -370,7 +370,7 @@ export default function Step2AgentChat({
             disabled={!isDone || selectedCount === 0}
             className="flex-1 md:flex-none"
           >
-            {isStreaming ? (
+            {!isDone && !errorMessage ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 分析中
