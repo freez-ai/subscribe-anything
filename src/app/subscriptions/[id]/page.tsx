@@ -440,8 +440,8 @@ function MasonryCard({ card, onClick }: { card: CardItem; onClick: () => void })
   const isUnread = !card.readAt;
   return (
     <button onClick={onClick} className={[
-      'w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col',
-      isUnread ? 'bg-card hover:bg-accent/60' : 'bg-card/60 opacity-80 hover:opacity-100 hover:bg-accent/40',
+      'w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60',
+      isUnread ? 'border-primary/40' : 'border-border',
     ].join(' ')}>
       {card.thumbnailUrl && (
         <img
@@ -453,10 +453,9 @@ function MasonryCard({ card, onClick }: { card: CardItem; onClick: () => void })
       )}
       <div className="p-3 flex flex-col gap-1">
         <div className="flex items-center gap-1.5">
-          {isUnread && <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />}
           <span className="text-[11px] text-muted-foreground truncate">{card.sourceTitle}</span>
         </div>
-        <p className={['text-sm leading-snug line-clamp-3', isUnread ? 'font-semibold' : ''].join(' ')}>
+        <p className="text-sm leading-snug line-clamp-3">
           {card.title}
         </p>
         {card.summary && (
@@ -481,8 +480,8 @@ function TimelineCard({ card, onClick }: { card: CardItem; onClick: () => void }
   const isUnread = !card.readAt;
   return (
     <button onClick={onClick} className={[
-      'w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start',
-      isUnread ? 'bg-card hover:bg-accent/60' : 'bg-card/60 opacity-80 hover:opacity-100 hover:bg-accent/40',
+      'w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start bg-card hover:bg-accent/60',
+      isUnread ? 'border-primary/40' : 'border-border',
     ].join(' ')}>
       {card.thumbnailUrl && (
         <img src={card.thumbnailUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0"
@@ -490,10 +489,9 @@ function TimelineCard({ card, onClick }: { card: CardItem; onClick: () => void }
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
-          {isUnread && <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />}
           <span className="text-[11px] text-muted-foreground truncate">{card.sourceTitle}</span>
         </div>
-        <p className={['text-sm leading-snug line-clamp-2', isUnread ? 'font-semibold' : ''].join(' ')}>
+        <p className="text-sm leading-snug line-clamp-2">
           {card.title}
         </p>
         {card.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{card.summary}</p>}
