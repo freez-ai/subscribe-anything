@@ -28,6 +28,9 @@ interface CardItem {
 interface Notification {
   id: string; type: string; title: string; body: string | null; isRead: boolean;
 }
+interface Source {
+  id: string; title: string; isEnabled: boolean;
+}
 
 const PAGE_SIZE = 50;
 const PULL_THRESHOLD = 70;
@@ -46,6 +49,8 @@ export default function SubscriptionDetailPage() {
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
+  const [filterSources, setFilterSources] = useState<Source[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef(0);
@@ -67,11 +72,24 @@ export default function SubscriptionDetailPage() {
 
   useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
 
+  /* ── Fetch sources for filter ── */
+  useEffect(() => {
+    fetch(`/api/sources?subscriptionId=${id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const arr: Source[] = Array.isArray(d) ? d : (d.data ?? []);
+        setFilterSources(arr);
+      })
+      .catch(() => {});
+  }, [id]);
+
   /* ── Fetch cards ── */
   const loadMore = useCallback(async (currentOffset: number, replace = false) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/subscriptions/${id}/message-cards?limit=${PAGE_SIZE}&offset=${currentOffset}`);
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(currentOffset) });
+      if (selectedSourceId) params.set('sourceId', selectedSourceId);
+      const res = await fetch(`/api/subscriptions/${id}/message-cards?${params}`);
       if (!res.ok) return;
       const data = await res.json();
       const items: CardItem[] = data.data;
@@ -81,7 +99,7 @@ export default function SubscriptionDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, selectedSourceId]);
 
   useEffect(() => { loadMore(0, true); }, [loadMore]);
 
@@ -303,6 +321,39 @@ export default function SubscriptionDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* Source filter pills — visible when there are 2+ sources */}
+      {filterSources.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 mb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            onClick={() => setSelectedSourceId(null)}
+            className={[
+              'whitespace-nowrap flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors',
+              !selectedSourceId
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground',
+            ].join(' ')}
+          >
+            全部
+          </button>
+          {filterSources.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSelectedSourceId(s.id === selectedSourceId ? null : s.id)}
+              className={[
+                'whitespace-nowrap flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors',
+                selectedSourceId === s.id
+                  ? 'bg-primary text-primary-foreground'
+                  : s.isEnabled
+                    ? 'bg-muted text-muted-foreground hover:text-foreground'
+                    : 'bg-muted text-muted-foreground/40',
+              ].join(' ')}
+            >
+              {s.title}{!s.isEnabled && ' (停用)'}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Cards */}
       {cards.length === 0 && !loading ? (

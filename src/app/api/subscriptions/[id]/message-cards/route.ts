@@ -2,8 +2,10 @@ import { eq, desc, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { messageCards, sources } from '@/lib/db/schema';
 
-// GET /api/subscriptions/[id]/message-cards?offset=0&limit=50
-// Returns all message cards for a subscription (newest first), with source title
+// GET /api/subscriptions/[id]/message-cards?offset=0&limit=50&sourceId=xxx
+// Returns message cards for a subscription (newest first), with source title.
+// Cards from disabled sources (isEnabled=false) are always excluded.
+// Optional sourceId param filters to a single source.
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -13,6 +15,7 @@ export async function GET(
     const url = new URL(req.url);
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') ?? '50', 10)));
     const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10));
+    const sourceId = url.searchParams.get('sourceId') ?? undefined;
 
     const db = getDb();
 
@@ -36,7 +39,11 @@ export async function GET(
       })
       .from(messageCards)
       .innerJoin(sources, eq(messageCards.sourceId, sources.id))
-      .where(eq(messageCards.subscriptionId, id))
+      .where(and(
+        eq(messageCards.subscriptionId, id),
+        eq(sources.isEnabled, true),
+        ...(sourceId ? [eq(messageCards.sourceId, sourceId)] : []),
+      ))
       .orderBy(desc(messageCards.createdAt))
       .limit(limit)
       .offset(offset)
