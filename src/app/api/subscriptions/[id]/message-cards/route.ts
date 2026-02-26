@@ -44,7 +44,7 @@ export async function GET(
         eq(sources.isEnabled, true),
         ...(sourceId ? [eq(messageCards.sourceId, sourceId)] : []),
       ))
-      .orderBy(desc(messageCards.createdAt))
+      .orderBy(desc(messageCards.publishedAt))
       .limit(limit)
       .offset(offset)
       .all();

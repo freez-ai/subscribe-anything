@@ -66,9 +66,14 @@ HTML 解析：必须用正则表达式或字符串方法，不能使用任何 DO
 
 脚本要求：
 1. 每个 CollectedItem 必须包含 title（字符串）和 url（字符串）
-2. 可选字段：summary、thumbnailUrl、publishedAt（ISO 8601 格式）
-3. 若页面无数据或解析失败，直接返回空数组 []；严禁构造虚假兜底条目（如 items.push({ title: '...', url: sourceUrl }) 之类的 fallback）
-4. 【监控条件处理】若监控条件不为"无"，则：
+2. publishedAt（ISO 8601 字符串，精确到秒）—— **必须尽力提取每条内容的真实发布时间**：
+   - RSS/Atom：从 pubDate / published / dc:date / updated 字段解析，用 new Date(pub).toISOString() 转换
+   - HTML/API：从 <time> 标签、datetime 属性、JSON 字段（publishedAt / created_at / date 等）、meta 标签中提取
+   - 若只能获取到日期字符串（如 "2024-01-15"）：直接 new Date("2024-01-15").toISOString() 得到 "2024-01-15T00:00:00.000Z"
+   - 若数据源确实不提供任何时间信息，省略此字段（服务端会自动用采集时间兜底）
+3. 可选字段：summary、thumbnailUrl
+4. 若页面无数据或解析失败，直接返回空数组 []；严禁构造虚假兜底条目（如 items.push({ title: '...', url: sourceUrl }) 之类的 fallback）
+5. 【监控条件处理】若监控条件不为"无"，则：
    - 分析监控条件，确定需要提取的指标（如价格、数量、评分等）
    - 为每个 CollectedItem 增加以下字段：
      - criteriaResult: 'matched' | 'not_matched' | 'invalid'
@@ -110,7 +115,7 @@ HTML 解析：必须用正则表达式或字符串方法，不能使用任何 DO
       const url   = pick('link') || pick('guid');
       if (!title || !url) continue;
       const entry = { title, url };
-      const pub = pick('pubDate') || pick('published') || pick('dc:date');
+      const pub = pick('pubDate') || pick('published') || pick('updated') || pick('dc:date') || pick('dc:modified');
       if (pub) { try { entry.publishedAt = new Date(pub).toISOString(); } catch {} }
       const desc = pick('description') || pick('summary');
       if (desc) entry.summary = desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
@@ -160,6 +165,7 @@ HTML 解析：必须用正则表达式或字符串方法，不能使用任何 DO
 
 **第一步：代码质量检查**
 - 是否存在虚假数据兜底（如空结果时强制 push 默认项，或硬编码假 title/URL）？
+- publishedAt 字段：采集结果中是否有真实的发布时间？若数据源包含时间信息（RSS pubDate、页面 <time> 标签、API 日期字段等）但脚本未提取 publishedAt，应判定为质量问题并在 fixedScript 中修复。
 - 若监控条件不为"无"，是否正确实现了 criteriaResult（'matched'|'not_matched'|'invalid'）和 metricValue 字段？
 
 **第二步：数据真实性验证**
@@ -266,6 +272,8 @@ export async function runMigrations() {
   try { sqlite.exec('ALTER TABLE message_cards ADD COLUMN criteria_result TEXT'); } catch { /* already exists */ }
   try { sqlite.exec('ALTER TABLE message_cards ADD COLUMN metric_value TEXT'); } catch { /* already exists */ }
   try { sqlite.exec('ALTER TABLE prompt_templates ADD COLUMN provider_id TEXT REFERENCES llm_providers(id) ON DELETE SET NULL'); } catch { /* already exists */ }
+  // Backfill historical NULL published_at values with created_at so sorting by published_at is reliable
+  try { sqlite.exec('UPDATE message_cards SET published_at = created_at WHERE published_at IS NULL'); } catch { /* ignore */ }
   try {
     sqlite.exec(`CREATE TABLE IF NOT EXISTS rss_instances (
       id TEXT PRIMARY KEY,

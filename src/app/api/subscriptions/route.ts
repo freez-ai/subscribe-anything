@@ -115,7 +115,7 @@ export async function POST(req: Request) {
                 summary: item.summary || null,
                 thumbnailUrl: item.thumbnailUrl || null,
                 sourceUrl: item.url,
-                publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
+                publishedAt: item.publishedAt ? new Date(item.publishedAt) : now,
                 meetsCriteriaFlag: meetsCriteria,
                 readAt: null,
                 rawData: JSON.stringify(item),
