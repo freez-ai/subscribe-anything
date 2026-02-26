@@ -112,16 +112,20 @@ function CallBlock({ info, prevMessageCount }: { info: LLMCallInfo; prevMessageC
               </>
             )}
           </p>
-          {info.toolCalls.map((tc, i) => (
-            <div key={i} className="flex gap-2 items-start">
-              <span className="flex-shrink-0 text-orange-400 text-[10px] leading-[1.6]">
-                [tool_call]
-              </span>
-              <span className="text-foreground/70 text-[11px] leading-relaxed flex-1 min-w-0">
-                <TruncatableText text={`${tc.name}(${tc.args})`} />
-              </span>
-            </div>
-          ))}
+          {info.toolCalls.map((tc, i) => {
+            let prettyArgs = tc.args;
+            try { prettyArgs = JSON.stringify(JSON.parse(tc.args)); } catch { /* keep raw */ }
+            return (
+              <div key={i} className="flex gap-2 items-start">
+                <span className="flex-shrink-0 text-orange-400 text-[10px] leading-[1.6]">
+                  [tool_call]
+                </span>
+                <span className="text-foreground/70 text-[11px] leading-relaxed flex-1 min-w-0">
+                  <TruncatableText text={`${tc.name}(${prettyArgs})`} />
+                </span>
+              </div>
+            );
+          })}
           {(info.responseText || isStreaming) && (
             <div className="flex gap-2 items-start">
               <span className="flex-shrink-0 text-green-400 text-[10px] leading-[1.6]">[text]</span>
