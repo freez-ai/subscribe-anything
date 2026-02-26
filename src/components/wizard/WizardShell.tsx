@@ -80,13 +80,13 @@ export default function WizardShell() {
     }));
   };
 
-  const handleComplete = () => {
+  const handleComplete = (subscriptionId: string) => {
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }
-    router.push('/subscriptions');
+    router.push(`/subscriptions/${subscriptionId}`);
   };
 
   if (!mounted) {

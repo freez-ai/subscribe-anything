@@ -132,6 +132,19 @@ export async function POST(req: Request) {
 
         totalNewCards += newCards;
 
+        // Update source stats to reflect the initial validation run
+        db.update(sources)
+          .set({
+            totalRuns: 1,
+            successRuns: 1,
+            itemsCollected: newCards,
+            lastRunAt: now,
+            lastRunSuccess: true,
+            updatedAt: now,
+          })
+          .where(eq(sources.id, source.id))
+          .run();
+
         // 3. Write source_created notification
         db.insert(notifications)
           .values({

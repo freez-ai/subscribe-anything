@@ -25,7 +25,7 @@ interface Step5PreviewProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
-  onComplete: () => void;
+  onComplete: (subscriptionId: string) => void;
 }
 
 const CUSTOM_VALUE = '__custom__';
@@ -105,9 +105,11 @@ export default function Step5Preview({
         throw new Error(errText || `HTTP ${res.status}`);
       }
 
+      const created = await res.json();
+
       // Update parent state then trigger completion
       onStateChange({ generatedSources: sources });
-      onComplete();
+      onComplete(created.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '提交失败，请重试';
       setErrorMessage(msg);

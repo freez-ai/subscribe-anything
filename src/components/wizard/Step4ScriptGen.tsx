@@ -382,8 +382,20 @@ export default function Step4ScriptGen({ state, onStateChange, onNext, onBack }:
                           </Button>
                         )}
 
-                        {/* Start / retry button (collapsed state) */}
-                        {(s.status === 'failed' || s.status === 'skipped') && !expanded && (
+                        {/* Start button (skipped) — directly launch without prompt dialog */}
+                        {s.status === 'skipped' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => generateSource(globalIdx)}
+                          >
+                            <Play className="h-3 w-3 mr-1" />开始生成
+                          </Button>
+                        )}
+
+                        {/* Retry button (failed) — expand panel with optional prompt */}
+                        {s.status === 'failed' && !expanded && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -392,11 +404,7 @@ export default function Step4ScriptGen({ state, onStateChange, onNext, onBack }:
                               setRetryExpanded((prev) => new Set([...prev, globalIdx]))
                             }
                           >
-                            {s.status === 'skipped' ? (
-                              <><Play className="h-3 w-3 mr-1" />开始生成</>
-                            ) : (
-                              <><RotateCcw className="h-3 w-3 mr-1" />重试</>
-                            )}
+                            <RotateCcw className="h-3 w-3 mr-1" />重试
                           </Button>
                         )}
 
