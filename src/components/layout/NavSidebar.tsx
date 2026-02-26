@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, Settings } from 'lucide-react';
+import { BookOpen, Github, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavSidebarProps {
@@ -48,6 +48,18 @@ export function NavSidebar({ className }: NavSidebarProps) {
           ))}
         </ul>
       </nav>
+
+      <div className="border-t p-3">
+        <a
+          href="https://github.com/freez-ai/subscribe-anything"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+        >
+          <Github className="h-4 w-4 shrink-0" />
+          GitHub
+        </a>
+      </div>
     </aside>
   );
 }

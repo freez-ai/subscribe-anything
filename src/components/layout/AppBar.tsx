@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Github } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const pageTitles: Record<string, string> = {
@@ -49,6 +49,15 @@ export function AppBar({ className }: AppBarProps) {
         </button>
       )}
       <span className="text-base font-semibold">{getTitle(pathname)}</span>
+      <a
+        href="https://github.com/freez-ai/subscribe-anything"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+        aria-label="GitHub"
+      >
+        <Github className="h-5 w-5" />
+      </a>
     </header>
   );
 }
