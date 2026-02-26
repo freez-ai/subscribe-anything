@@ -76,7 +76,7 @@ All API keys and AI provider configuration are stored inside the SQLite database
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/subscribe-anything.git
+git clone https://github.com/freez-ai/subscribe-anything.git
 cd subscribe-anything
 ```
 
@@ -179,7 +179,7 @@ sudo apt-get install -y python3 make g++
 
 ```bash
 # 1. Clone
-git clone https://github.com/your-username/subscribe-anything.git
+git clone https://github.com/freez-ai/subscribe-anything.git
 cd subscribe-anything
 
 # 2. Install dependencies (compiles native modules)
