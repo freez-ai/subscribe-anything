@@ -78,7 +78,7 @@ export default function SubscriptionDetailPage() {
       .then((r) => r.json())
       .then((d) => {
         const arr: Source[] = Array.isArray(d) ? d : (d.data ?? []);
-        setFilterSources(arr);
+        setFilterSources(arr.filter((s) => s.isEnabled));
       })
       .catch(() => {});
   }, [id]);
@@ -344,12 +344,10 @@ export default function SubscriptionDetailPage() {
                 'whitespace-nowrap flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors',
                 selectedSourceId === s.id
                   ? 'bg-primary text-primary-foreground'
-                  : s.isEnabled
-                    ? 'bg-muted text-muted-foreground hover:text-foreground'
-                    : 'bg-muted text-muted-foreground/40',
+                  : 'bg-muted text-muted-foreground hover:text-foreground',
               ].join(' ')}
             >
-              {s.title}{!s.isEnabled && ' (停用)'}
+              {s.title}
             </button>
           ))}
         </div>
