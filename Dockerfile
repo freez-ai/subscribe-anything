@@ -50,6 +50,6 @@ COPY --from=builder /app/public       ./public
 # Download Playwright Chromium binary
 RUN node_modules/.bin/playwright install chromium
 
-EXPOSE 3000
+EXPOSE 8080
 
 CMD ["node", "dist/server.js"]
