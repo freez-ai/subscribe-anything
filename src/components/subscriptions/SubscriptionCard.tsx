@@ -34,7 +34,12 @@ export default function SubscriptionCard({
 
   return (
     <div
-      className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3 cursor-pointer hover:shadow-md transition-shadow touch-manipulation"
+      className={[
+        'border rounded-lg p-4 flex flex-col gap-3 cursor-pointer hover:shadow-md transition-shadow touch-manipulation',
+        subscription.unreadCount > 0
+          ? 'bg-card border-l-[3px] border-l-primary'
+          : 'bg-card',
+      ].join(' ')}
       onClick={() => router.push(`/subscriptions/${subscription.id}`)}
     >
       {/* Header row */}
