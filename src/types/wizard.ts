@@ -1,0 +1,29 @@
+import type { CollectedItem } from '@/lib/sandbox/contract';
+
+export interface FoundSource {
+  title: string;
+  url: string;
+  description: string;
+  recommended?: boolean;
+  /** true = source can provide metric data for the monitoring criteria */
+  canProvideCriteria?: boolean;
+}
+
+export interface GeneratedSource {
+  title: string;
+  url: string;
+  description: string;
+  script: string;
+  cronExpression: string;
+  initialItems: CollectedItem[];
+  isEnabled: boolean;
+}
+
+export interface WizardState {
+  step: 1 | 2 | 3 | 4;
+  topic: string;
+  criteria: string;
+  foundSources: FoundSource[];
+  selectedIndices: number[];
+  generatedSources: GeneratedSource[];
+}

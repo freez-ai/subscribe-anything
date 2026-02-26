@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(ls D:\\\\code\\\\subscibe-anything:*)",
+      "Bash(cd D:\\\\code\\\\subscibe-anything:*)",
+      "Bash(tail:*)",
+      "Bash(npx:*)",
+      "Bash(npm:*)",
+      "Bash(grep:*)",
+      "Bash(node:*)",
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "mcp__chrome-devtools__list_pages",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__fill_form",
+      "mcp__chrome-devtools__wait_for",
+      "Bash(echo exit:$?:*)",
+      "Bash(find src:*)",
+      "Bash(echo EXIT:$?:*)"
+    ]
+  }
+}
