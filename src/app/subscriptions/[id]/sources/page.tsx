@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Play, Wrench, Clock, X, Loader2,
-  CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Code2, Copy, Check
+  CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Code2, Copy, Check, Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -92,6 +92,17 @@ export default function SourcesPage() {
     showToast('采集频率已更新');
   };
 
+  const handleTitleChange = async (src: Source, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === src.title) return;
+    await fetch(`/api/sources/${src.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: trimmed }),
+    });
+    fetchSources();
+    showToast('名称已更新');
+  };
+
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -141,6 +152,7 @@ export default function SourcesPage() {
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
+                onTitleChange={(t) => handleTitleChange(src, t)}
                 onRepair={() => setRepairTarget(src)}
                 onViewScript={() => setScriptTarget(src)}
               />
@@ -152,6 +164,7 @@ export default function SourcesPage() {
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
+                onTitleChange={(t) => handleTitleChange(src, t)}
                 onRepair={() => setRepairTarget(src)}
                 onViewScript={() => setScriptTarget(src)}
               />
@@ -238,18 +251,47 @@ function CronSelector({ value, onChange }: { value: string; onChange: (v: string
 }
 
 /* ── Desktop Source Card ── */
-function SourceCard({ src, onToggle, onTrigger, onCronChange, onRepair, onViewScript }: {
+function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript }: {
   src: Source; onToggle: (v: boolean) => void;
-  onTrigger: () => void; onCronChange: (v: string) => void; onRepair: () => void; onViewScript: () => void;
+  onTrigger: () => void; onCronChange: (v: string) => void;
+  onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void;
 }) {
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingValue, setEditingValue] = useState('');
+
+  const startEdit = () => { setEditingValue(src.title); setEditingTitle(true); };
+  const commitEdit = () => { onTitleChange(editingValue); setEditingTitle(false); };
+
   return (
     <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
       {/* Title row */}
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {editingTitle ? (
+              <input
+                autoFocus
+                className="flex-1 min-w-0 rounded border bg-background px-1.5 py-0.5 text-sm font-semibold"
+                value={editingValue}
+                onChange={(e) => setEditingValue(e.target.value)}
+                onBlur={commitEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitEdit();
+                  if (e.key === 'Escape') setEditingTitle(false);
+                }}
+              />
+            ) : (
+              <>
+                <a href={src.url} target="_blank" rel="noopener noreferrer"
+                  className="text-sm font-semibold hover:underline line-clamp-1 flex-1 min-w-0">{src.title}</a>
+                <button onClick={startEdit} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="编辑名称">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </>
+            )}
+          </div>
           <a href={src.url} target="_blank" rel="noopener noreferrer"
-            className="text-sm font-semibold hover:underline line-clamp-1">{src.title}</a>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{src.url}</p>
+            className="text-xs text-muted-foreground truncate mt-0.5 hover:underline underline-offset-2 block">{src.url}</a>
         </div>
         <Switch checked={src.isEnabled} onCheckedChange={onToggle} />
       </div>
@@ -295,17 +337,48 @@ function SourceCard({ src, onToggle, onTrigger, onCronChange, onRepair, onViewSc
 }
 
 /* ── Mobile Accordion ── */
-function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onRepair, onViewScript }: {
+function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript }: {
   src: Source; onToggle: (v: boolean) => void;
-  onTrigger: () => void; onCronChange: (v: string) => void; onRepair: () => void; onViewScript: () => void;
+  onTrigger: () => void; onCronChange: (v: string) => void;
+  onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingValue, setEditingValue] = useState('');
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingValue(src.title);
+    setEditingTitle(true);
+  };
+  const commitEdit = () => { onTitleChange(editingValue); setEditingTitle(false); };
+
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <button className="w-full flex items-center gap-3 px-4 py-3 text-left"
-        onClick={() => setOpen((v) => !v)}>
+        onClick={() => !editingTitle && setOpen((v) => !v)}>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{src.title}</p>
+          {editingTitle ? (
+            <input
+              autoFocus
+              className="w-full rounded border bg-background px-1.5 py-0.5 text-sm font-medium"
+              value={editingValue}
+              onChange={(e) => setEditingValue(e.target.value)}
+              onBlur={commitEdit}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitEdit();
+                if (e.key === 'Escape') setEditingTitle(false);
+              }}
+            />
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="text-sm font-medium truncate flex-1 min-w-0">{src.title}</p>
+              <button onClick={startEdit} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="编辑名称">
+                <Pencil className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-2 mt-0.5">
             <StatusBadge status={src.status} />
             <span className="text-xs text-muted-foreground">{src.itemsCollected} 条</span>
@@ -318,7 +391,10 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onRepair, onV
       {open && (
         <div className="px-4 pb-4 flex flex-col gap-3 border-t">
           <div className="flex items-center justify-between pt-3">
-            <span className="text-xs text-muted-foreground">{src.url.slice(0, 40)}…</span>
+            <a href={src.url} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:underline underline-offset-2 truncate flex-1 min-w-0 mr-2">
+              {src.url.slice(0, 40)}{src.url.length > 40 ? '…' : ''}
+            </a>
             <Switch checked={src.isEnabled} onCheckedChange={onToggle} />
           </div>
 

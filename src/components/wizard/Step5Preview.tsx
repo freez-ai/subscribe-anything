@@ -202,7 +202,15 @@ export default function Step5Preview({
                           已验证
                         </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{source.url}</p>
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-muted-foreground truncate mt-0.5 hover:underline underline-offset-2 block"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {source.url}
+                      </a>
                     </div>
                     {/* Enable/disable switch */}
                     <div className="flex items-center gap-2 flex-shrink-0">
