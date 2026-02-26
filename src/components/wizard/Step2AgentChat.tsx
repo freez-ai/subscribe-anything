@@ -45,7 +45,7 @@ export default function Step2AgentChat({
     if (state.foundSources.length > 0) return defaultSelection(state.foundSources);
     return new Set();
   });
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(state.foundSources.length === 0);
   const [isDone, setIsDone] = useState(state.foundSources.length > 0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSearchProviderError, setIsSearchProviderError] = useState(false);
