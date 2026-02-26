@@ -374,10 +374,14 @@ export default function SubscriptionDetailPage() {
           </div>
           {/* Desktop: respect layout state */}
           {layout === 'masonry' ? (
-            <div className="hidden md:block columns-1 sm:columns-2 lg:columns-3 gap-3">
-              {cards.map((card) => (
-                <div key={card.id} className="break-inside-avoid mb-3">
-                  <MasonryCard card={card} onClick={() => handleCardClick(card)} />
+            <div className="hidden md:flex gap-3">
+              {[0, 1, 2].map((colIdx) => (
+                <div key={colIdx} className="flex-1 flex flex-col gap-3">
+                  {cards
+                    .filter((_, i) => i % 3 === colIdx)
+                    .map((card) => (
+                      <MasonryCard key={card.id} card={card} onClick={() => handleCardClick(card)} />
+                    ))}
                 </div>
               ))}
             </div>
