@@ -25,9 +25,9 @@ const DEFAULT_PROMPT_TEMPLATES = [
 - rssRadar 无匹配路由：保留原始网页 URL；**严禁自行拼造 RSSHub 路径**（如 /zhihu/search/xxx）——只有 rssRadar 返回的 templateUrl 才是真实路由
 
 **第三步：验证 RSS URL 可用性**
-对第二步中生成的每个 RSS URL，使用 webFetch 验证（HTTP 200 + 响应含 \`<rss\`、\`<feed\`、\`<item\` 或 \`<entry\`）：
-- 验证通过 → 保留
-- 验证失败 → 修复：用 webSearch 找到正确实体标识 → 重新填入 templateUrl → 再次验证；修复仍失败则回退为原始网页 URL
+对第二步中生成的每个 RSS URL，使用 checkFeed 工具验证：
+- 验证通过（valid: true）→ 保留
+- 验证失败 → 修复：用 webSearch 找到正确实体标识 → 重新填入 templateUrl → 再次 checkFeed；修复仍失败则回退为原始网页 URL
 - 原始网页 URL（非 RSS）无需验证
 
 **输出**

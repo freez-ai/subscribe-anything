@@ -19,6 +19,7 @@ import { getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/c
 import type { LLMCallInfo } from '@/lib/ai/client';
 import { webSearch, webSearchToolDef } from '@/lib/ai/tools/webSearch';
 import { rssRadar, rssRadarToolDef } from '@/lib/ai/tools/rssRadar';
+import { checkFeed, checkFeedToolDef } from '@/lib/ai/tools/checkFeed';
 import type OpenAI from 'openai';
 
 export interface FoundSource {
@@ -72,7 +73,7 @@ export async function findSourcesAgent(
     const stream = llmStream(openai, {
       model: provider.modelId,
       messages,
-      tools: [webSearchToolDef, rssRadarToolDef],
+      tools: [webSearchToolDef, rssRadarToolDef, checkFeedToolDef],
       tool_choice: 'auto',
       stream: true,
       stream_options: { include_usage: true },
@@ -169,8 +170,17 @@ export async function findSourcesAgent(
             resultSummary: `找到 ${results.length} 条结果`,
             success: true,
           });
+        } else if (tc.name === 'checkFeed') {
+          const { url: feedUrl } = JSON.parse(tc.args);
+          const result = await checkFeed(feedUrl);
+          resultContent = JSON.stringify(result);
+          emit({
+            type: 'tool_result',
+            name: 'checkFeed',
+            resultSummary: result.valid ? `有效 RSS/Atom feed (HTTP ${result.status})` : `无效 (HTTP ${result.status})`,
+            success: result.valid,
+          });
         } else {
-          resultContent = JSON.stringify({ error: `Unknown tool: ${tc.name}` });
         }
       } catch (err) {
         // Re-throw fatal errors (e.g. no search provider) — sseStream will emit error event
