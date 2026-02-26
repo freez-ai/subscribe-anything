@@ -25,6 +25,15 @@ const DEFAULT_PROMPT_TEMPLATES = [
 - **若 rssRadar 没有找到匹配路由，保留原始网页 URL，严禁自行拼造 RSSHub 路径（如 /zhihu/search/xxx、/bilibili/topic/xxx 等）** — 只有 rssRadar 返回的 templateUrl 才是真实存在的路由
 - 若 rssRadar 返回了路由但 templateUrl 参数无法从上下文直接推断（如需要用户 ID 但只有用户名），必须先调用 webSearch 搜索确认正确参数，再填入 templateUrl
 
+**第三步：验证并修复每个 RSS URL 的可访问性**
+对第二步中生成的每个 RSS URL，使用 webFetch 验证是否返回有效内容（HTTP 200 且响应包含 \`<rss\`、\`<feed\`、\`<item\` 或 \`<entry\` 等 XML 标志）：
+- 若验证通过 → 保留该 URL
+- 若返回 4xx / 5xx 或内容不是有效 XML → **执行修复，不要直接输出失败 URL**：
+  1. 用 webSearch 搜索数据源主题和平台（如 "知乎 黑白调X7 专栏 ID"、"B站 用户名 UID" 等），找到正确的实体标识
+  2. 用找到的实体标识重新填入 rssRadar 返回的 templateUrl，再次 webFetch 验证
+  3. 若修复后仍失败，回退到使用原始网页 URL（非 RSS）
+- 原始网页 URL（非 RSS 类型）无需 webFetch 验证
+
 最终以 JSON 数组格式输出，每项包含：
 - title: 数据源名称
 - url: 数据源 URL（若有对应 RSS 路由则使用填好参数的 RSS 地址，否则使用原始页面 URL）
@@ -86,19 +95,6 @@ HTML 解析：必须用正则表达式或字符串方法，不能使用任何 DO
    - 若整个数据源结构无法提供监控指标，所有条目均设 criteriaResult: 'invalid'
 
 先按以下步骤确定最佳采集方式：
-
-**【第零步】验证数据源 URL 是否可用**
-首先用 webFetch 抓取数据源 URL：
-- 若返回有效内容（200 状态，且内容不为空）→ 继续"第一步"
-- 若返回 4xx / 5xx 错误，说明该 URL 无效，**立即执行 URL 修复流程，不要重试同一 URL**：
-  1. 用 webSearch 搜索数据源主题（如 "知乎 黑白调X7 专栏"、"B站 用户名 UID" 等），找到实际内容所在的真实页面 URL 和关键实体标识（用户 ID、专栏 ID、话题 ID 等）
-  2. 用 rssRadar 查询该平台是否有对应 RSS 路由，将找到的实体 ID 填入 templateUrl
-  3. 若找到有效 RSS URL，用 webFetch 验证后按"第一步"继续；若 rssRadar 无匹配路由，直接对实际内容页面进入"第二步"
-  4. **禁止自行拼凑 RSSHub 路径** — 只使用 rssRadar 返回的 templateUrl 填参数后的结果
-
-**【可选前置步骤】使用 webSearch 补充确认实体信息**
-若 URL 可用但路径中包含需要确认的实体标识（如用户名、频道 ID 等），可用 webSearch 搜索确认。
-**注意：webSearch 结果仅用于辅助确定正确 URL 或参数，不能作为采集数据来源。**
 
 **第一步：检查是否有可用的 RSS feed**
 使用 rssRadar 工具查询数据源网站名称或域名，看是否存在匹配的 RSS 路由。
