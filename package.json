@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "NODE_OPTIONS=--disable-warning=DEP0169 tsx server.ts",
     "build": "next build && tsc -p tsconfig.server.json && tsc-alias -p tsconfig.server.json",
     "start": "node dist/server.js",
     "db:push": "drizzle-kit push",
