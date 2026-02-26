@@ -47,6 +47,10 @@ export async function POST(req: Request) {
     const now = new Date();
     const id = createId();
 
+    // Auto-activate if this is the first provider
+    const existingCount = db.select({ id: llmProviders.id }).from(llmProviders).all().length;
+    const isFirst = existingCount === 0;
+
     db.insert(llmProviders)
       .values({
         id,
@@ -55,7 +59,7 @@ export async function POST(req: Request) {
         apiKey,
         modelId,
         headers: headers ? JSON.stringify(headers) : null,
-        isActive: false,
+        isActive: isFirst,
         createdAt: now,
         updatedAt: now,
       })
