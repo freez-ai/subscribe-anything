@@ -84,8 +84,17 @@ export function findMatchingTemplateUrl(url: string): string | null {
         const route = routeItem as Record<string, unknown>;
         const target = String(route.target ?? '');
         if (!target || !target.includes(':')) continue;
-        const pattern = target.replace(/:([^/]+)/g, '[^/]+');
-        if (new RegExp(`^${pattern}([/?#].*)?$`).test(urlPath)) {
+        // Escape all regex special chars first, then restore :param placeholders
+        // (which were escaped to \:param) as [^/]+ matchers.
+        const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = escaped.replace(/\\:([^/]+)/g, '[^/]+');
+        let re: RegExp;
+        try {
+          re = new RegExp(`^${pattern}([/?#].*)?$`);
+        } catch {
+          continue;
+        }
+        if (re.test(urlPath)) {
           return `${cachedBaseUrl}${target}`;
         }
       }
