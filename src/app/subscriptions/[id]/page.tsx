@@ -421,7 +421,11 @@ export default function SubscriptionDetailPage() {
 
       {/* Analysis dialog */}
       {analyzeOpen && (
-        <AnalyzeDialog subscriptionId={id} onClose={() => setAnalyzeOpen(false)} />
+        <AnalyzeDialog
+          subscriptionId={id}
+          sourceId={selectedSourceId}
+          onClose={() => setAnalyzeOpen(false)}
+        />
       )}
     </div>
   );
@@ -626,12 +630,16 @@ function TimelineCard({
 }
 
 /* ── Analyze Dialog ── */
-type SelectionMode = 'limit' | 'select';
-
-function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; onClose: () => void }) {
+function AnalyzeDialog({
+  subscriptionId,
+  sourceId,
+  onClose,
+}: {
+  subscriptionId: string;
+  sourceId: string | null;
+  onClose: () => void;
+}) {
   const [description, setDescription] = useState('');
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>('limit');
-  const [limit, setLimit] = useState(50);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [html, setHtml] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -652,14 +660,10 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
-    const body: { description?: string; limit?: number; cardIds?: string[] } = {
+    const body: { description?: string; cardIds?: string[] } = {
       description: description || undefined,
+      cardIds: Array.from(selectedCardIds),
     };
-    if (selectionMode === 'limit') {
-      body.limit = limit;
-    } else {
-      body.cardIds = Array.from(selectedCardIds);
-    }
 
     try {
       const res = await fetch(`/api/subscriptions/${subscriptionId}/analyze`, {
@@ -742,7 +746,7 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
 
   const isIdle = !streaming && !html && !error;
   const isDone = !streaming && !!html;
-  const canStart = selectionMode === 'limit' || selectedCardIds.size > 0;
+  const canStart = selectedCardIds.size > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -771,57 +775,13 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
                 />
               </div>
 
-              {/* Selection mode toggle */}
-              <div>
-                <label className="text-sm font-medium block mb-2">数据选择方式</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectionMode('limit')}
-                    className={[
-                      'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors border',
-                      selectionMode === 'limit'
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background border-border hover:bg-muted',
-                    ].join(' ')}
-                  >
-                    按数量
-                  </button>
-                  <button
-                    onClick={() => setSelectionMode('select')}
-                    className={[
-                      'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors border',
-                      selectionMode === 'select'
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background border-border hover:bg-muted',
-                    ].join(' ')}
-                  >
-                    选择卡片
-                  </button>
-                </div>
-              </div>
-
-              {/* Limit mode */}
-              {selectionMode === 'limit' && (
-                <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium">分析数据量</label>
-                  <select
-                    className="rounded-md border bg-background px-2 py-1 text-sm"
-                    value={limit}
-                    onChange={(e) => setLimit(Number(e.target.value))}
-                  >
-                    {[20, 50, 100].map((n) => <option key={n} value={n}>最近 {n} 条</option>)}
-                  </select>
-                </div>
-              )}
-
-              {/* Select mode */}
-              {selectionMode === 'select' && (
-                <CardSelector
-                  subscriptionId={subscriptionId}
-                  selectedIds={selectedCardIds}
-                  onSelectionChange={setSelectedCardIds}
-                />
-              )}
+              {/* Card selector with quick select */}
+              <CardSelector
+                subscriptionId={subscriptionId}
+                sourceId={sourceId}
+                selectedIds={selectedCardIds}
+                onSelectionChange={setSelectedCardIds}
+              />
             </div>
           )}
 
@@ -908,62 +868,55 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
 }
 
 /* ── Card Selector for Analyze Dialog ── */
-const SELECTOR_PAGE_SIZE = 20;
+const SELECTOR_PAGE_SIZE = 100; // Load up to 100 cards at once
 
 function CardSelector({
   subscriptionId,
+  sourceId,
   selectedIds,
   onSelectionChange,
 }: {
   subscriptionId: string;
+  sourceId: string | null;
   selectedIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
 }) {
   const [cards, setCards] = useState<CardItem[]>([]);
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
   const initialLoadDone = useRef(false);
 
-  const loadMore = useCallback(async (currentOffset: number) => {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        limit: String(SELECTOR_PAGE_SIZE),
-        offset: String(currentOffset),
-      });
-      const res = await fetch(`/api/subscriptions/${subscriptionId}/message-cards?${params}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const items: CardItem[] = data.data;
-      // Deduplicate by id
-      setCards((prev) => {
-        const existingIds = new Set(prev.map((c) => c.id));
-        const newItems = items.filter((item) => !existingIds.has(item.id));
-        return [...prev, ...newItems];
-      });
-      setHasMore(items.length === SELECTOR_PAGE_SIZE);
-      setOffset(currentOffset + items.length);
-      // Estimate total count on first load
-      if (currentOffset === 0 && items.length > 0) {
-        // We don't have exact count from API, so estimate based on hasMore
-        setTotalCount(items.length);
-      } else if (items.length > 0) {
-        setTotalCount((prev) => prev + items.length);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [subscriptionId, loading]);
-
+  // Load cards on mount or when sourceId changes
   useEffect(() => {
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true;
-      loadMore(0);
-    }
-  }, [loadMore]);
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+
+    setLoading(true);
+    const params = new URLSearchParams({
+      limit: String(SELECTOR_PAGE_SIZE),
+      offset: '0',
+    });
+    if (sourceId) params.set('sourceId', sourceId);
+
+    fetch(`/api/subscriptions/${subscriptionId}/message-cards?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const items: CardItem[] = data.data || [];
+        setCards(items);
+        // Default select first 50 cards
+        if (items.length > 0 && selectedIds.size === 0) {
+          const defaultIds = items.slice(0, 50).map((c) => c.id);
+          onSelectionChange(new Set(defaultIds));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [subscriptionId, sourceId, selectedIds.size, onSelectionChange]);
+
+  // Quick select buttons
+  const quickSelect = (count: number) => {
+    const ids = cards.slice(0, count).map((c) => c.id);
+    onSelectionChange(new Set(ids));
+  };
 
   const toggleCard = (cardId: string) => {
     const next = new Set(selectedIds);
@@ -977,27 +930,70 @@ function CardSelector({
 
   const isSelected = (cardId: string) => selectedIds.has(cardId);
   const selectedCount = selectedIds.size;
+  const totalLoaded = cards.length;
 
   return (
     <div className="border rounded-lg overflow-hidden">
-      {/* Header with count */}
-      <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b">
-        <span className="text-xs text-muted-foreground">
-          已选择 <span className="font-medium text-foreground">{selectedCount}</span>/100 条
-        </span>
-        {selectedCount > 0 && (
+      {/* Header with quick select buttons */}
+      <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            已选择 <span className="font-medium text-foreground">{selectedCount}</span>/{Math.min(totalLoaded, 100)} 条
+          </span>
+          {selectedCount > 0 && (
+            <button
+              onClick={() => onSelectionChange(new Set())}
+              className="text-xs text-primary hover:underline"
+            >
+              清空
+            </button>
+          )}
+        </div>
+        {/* Quick select buttons */}
+        <div className="flex gap-1">
           <button
-            onClick={() => onSelectionChange(new Set())}
-            className="text-xs text-primary hover:underline"
+            onClick={() => quickSelect(20)}
+            className={[
+              'px-2 py-0.5 rounded text-[11px] font-medium transition-colors',
+              selectedCount === 20
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground',
+            ].join(' ')}
           >
-            清空选择
+            20条
           </button>
-        )}
+          <button
+            onClick={() => quickSelect(50)}
+            className={[
+              'px-2 py-0.5 rounded text-[11px] font-medium transition-colors',
+              selectedCount === 50
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground',
+            ].join(' ')}
+          >
+            50条
+          </button>
+          <button
+            onClick={() => quickSelect(100)}
+            className={[
+              'px-2 py-0.5 rounded text-[11px] font-medium transition-colors',
+              selectedCount === Math.min(totalLoaded, 100) && totalLoaded > 50
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground',
+            ].join(' ')}
+          >
+            全选
+          </button>
+        </div>
       </div>
 
       {/* Card list */}
-      <div className="max-h-[240px] overflow-y-auto">
-        {cards.length === 0 && !loading ? (
+      <div className="max-h-[280px] overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : cards.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
             暂无消息卡片
           </div>
@@ -1006,7 +1002,10 @@ function CardSelector({
             {cards.map((card) => (
               <label
                 key={card.id}
-                className="flex gap-2 px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                className={[
+                  'flex gap-2 px-3 py-2 cursor-pointer transition-colors',
+                  isSelected(card.id) ? 'bg-primary/5' : 'hover:bg-muted/30',
+                ].join(' ')}
               >
                 <input
                   type="checkbox"
@@ -1025,22 +1024,7 @@ function CardSelector({
             ))}
           </div>
         )}
-        {loading && (
-          <div className="flex justify-center py-3">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
-        )}
       </div>
-
-      {/* Load more button */}
-      {hasMore && !loading && (
-        <button
-          onClick={() => loadMore(offset)}
-          className="w-full py-2 text-xs text-primary hover:bg-muted/30 transition-colors border-t"
-        >
-          加载更多
-        </button>
-      )}
     </div>
   );
 }
