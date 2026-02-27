@@ -20,7 +20,7 @@ import { formatDistanceToNow } from '@/lib/utils/time';
 import type { CollectedItem } from '@/lib/sandbox/contract';
 import type { GeneratedSource, WizardState } from '@/types/wizard';
 
-interface Step5PreviewProps {
+interface Step4ConfirmProps {
   state: WizardState;
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
@@ -30,12 +30,12 @@ interface Step5PreviewProps {
 
 const CUSTOM_VALUE = '__custom__';
 
-export default function Step5Preview({
+export default function Step4Confirm({
   state,
   onStateChange,
   onBack,
   onComplete,
-}: Step5PreviewProps) {
+}: Step4ConfirmProps) {
   const [sources, setSources] = useState<GeneratedSource[]>(state.generatedSources);
   const [customCrons, setCustomCrons] = useState<Record<number, string>>({});
   const [editingTitleIdx, setEditingTitleIdx] = useState<number | null>(null);

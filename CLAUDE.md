@@ -64,7 +64,7 @@ Everything runs in a single Node.js process. **`server.ts`** is the entrypoint �
 - Next.js 15 App Router, React 19, Tailwind CSS, shadcn/ui components
 - Mobile-first: bottom tab bar (`BottomNav`), iOS safe area hooks (`useSafeArea`), swipe gesture support
 - Unread badge polls `/api/message-cards/unread-count` every 30 seconds (`useUnreadCount` hook)
-- Wizard flow (`/subscriptions/new`): 5 steps — Step1Topic → find-sources SSE → source selection → generate-scripts SSE → Step5Preview → confirm
+- Wizard flow (`/subscriptions/new`): 4 steps — Step1Topic → Step2FindSources (find-sources SSE + source selection) → Step3ScriptGen (generate-scripts SSE) → Step4Confirm
 
 ### Environment Variables
 

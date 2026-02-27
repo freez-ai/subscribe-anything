@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import type { WizardState } from '@/types/wizard';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import Step1Topic from './Step1Topic';
-import Step2AgentChat from './Step2AgentChat';
-import Step4ScriptGen from './Step4ScriptGen';
-import Step5Preview from './Step5Preview';
+import Step2FindSources from './Step2FindSources';
+import Step3ScriptGen from './Step3ScriptGen';
+import Step4Confirm from './Step4Confirm';
 
 const STORAGE_KEY = 'wizard-state';
 
@@ -210,10 +210,10 @@ export default function WizardShell() {
       {/* Step Content */}
       <div className="flex-1 px-4 md:px-6 pb-24 md:pb-6">
         {state.step === 1 && <Step1Topic {...stepProps} />}
-        {state.step === 2 && <Step2AgentChat {...stepProps} />}
-        {state.step === 3 && <Step4ScriptGen {...stepProps} />}
+        {state.step === 2 && <Step2FindSources {...stepProps} />}
+        {state.step === 3 && <Step3ScriptGen {...stepProps} />}
         {state.step === 4 && (
-          <Step5Preview {...stepProps} onComplete={handleComplete} />
+          <Step4Confirm {...stepProps} onComplete={handleComplete} />
         )}
       </div>
     </div>

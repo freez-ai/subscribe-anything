@@ -20,7 +20,7 @@ import type { LLMCallInfo } from '@/lib/ai/client';
 import type { CollectedItem } from '@/lib/sandbox/contract';
 import type { GeneratedSource, WizardState } from '@/types/wizard';
 
-interface Step4ScriptGenProps {
+interface Step3ScriptGenProps {
   state: WizardState;
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
@@ -40,7 +40,7 @@ function isInProgress(s: SourceStatus | undefined): boolean {
   return !!s && (s.status === 'pending' || s.status === 'generating' || s.status === 'validating');
 }
 
-export default function Step4ScriptGen({ state, onStateChange, onNext, onBack }: Step4ScriptGenProps) {
+export default function Step3ScriptGen({ state, onStateChange, onNext, onBack }: Step3ScriptGenProps) {
   const allSources = state.foundSources;
   const selectedSet = new Set(state.selectedIndices);
 

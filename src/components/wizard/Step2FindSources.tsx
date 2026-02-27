@@ -10,7 +10,7 @@ import LLMLogDialog from '@/components/debug/LLMLogDialog';
 import type { LLMCallInfo } from '@/lib/ai/client';
 import type { FoundSource, WizardState } from '@/types/wizard';
 
-interface Step2FindAndSelectProps {
+interface Step2FindSourcesProps {
   state: WizardState;
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
@@ -26,12 +26,12 @@ function defaultSelection(sources: FoundSource[]): Set<number> {
   return new Set(recommended.length > 0 ? recommended : sources.map((_, i) => i));
 }
 
-export default function Step2AgentChat({
+export default function Step2FindSources({
   state,
   onStateChange,
   onNext,
   onBack,
-}: Step2FindAndSelectProps) {
+}: Step2FindSourcesProps) {
   const [searchQueries, setSearchQueries] = useState<string[]>([]);
   const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
   const [totalTokens, setTotalTokens] = useState(0);

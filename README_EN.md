@@ -25,10 +25,9 @@
 Subscribe Anything is a self-hosted platform that lets you subscribe to *any* topic — people, products, technologies, events — and get notified when new content matching your criteria appears. Instead of manually configuring RSS feeds or writing scraping scripts yourself, an AI agent does it all:
 
 1. **Describe a topic** (e.g. "OpenAI research papers") and an optional monitoring criterion (e.g. "cited more than 100 times")
-2. **The AI finds 5–10 data sources** for your topic using a web search, preferring RSS/API feeds when available
-3. **Review and select** which sources to subscribe to
-4. **The AI writes a JavaScript collection script** for each source, validates it in a sandbox, and shows you a preview of collected items
-5. **Confirm** — your subscription is live. The scheduler runs your scripts on a cron schedule, deduplicates results, and pushes unread message cards to your inbox
+2. **The AI finds 5–10 data sources** for your topic using a web search, preferring RSS/API feeds when available — then select which sources to subscribe to
+3. **The AI writes a JavaScript collection script** for each source, validates it in a sandbox, and shows you a preview of collected items
+4. **Confirm** — your subscription is live. The scheduler runs your scripts on a cron schedule, deduplicates results, and pushes unread message cards to your inbox
 
 All API keys and AI provider configuration are stored inside the SQLite database (no environment variables needed beyond `DB_URL`). Everything runs in a single Node.js process.
 
@@ -38,7 +37,7 @@ All API keys and AI provider configuration are stored inside the SQLite database
 
 | Feature | Description |
 |---|---|
-| 🤖 AI Source Discovery | Five-step wizard uses an AI agent with web search to find the best data sources for any topic |
+| 🤖 AI Source Discovery | Four-step wizard uses an AI agent with web search to find the best data sources for any topic |
 | 📝 Auto Script Generation | AI generates, validates, and repairs JavaScript collection scripts that run in a secure V8 sandbox |
 | 📅 Cron Scheduling | Per-source cron schedules (`node-cron`), concurrent execution limited to 5 sandboxes via `p-limit` |
 | 📬 Message Center | Unified cross-subscription inbox with unread/read states, criteria-match highlights, and 30-second polling badge |
@@ -270,7 +269,7 @@ All AI agent prompts are editable and can be reset to defaults at any time:
 | Template | Used by |
 |---|---|
 | `find-sources` | Wizard step 2 — discovers data sources via web search |
-| `generate-script` | Wizard step 4 — writes and validates collection scripts |
+| `generate-script` | Wizard step 3 — writes and validates collection scripts |
 | `validate-script` | Script validation quality check |
 | `repair-script` | Source repair agent |
 | `analyze-subscription` | Analysis report generation |
@@ -343,7 +342,7 @@ subscribe-anything/
 │   ├── components/
 │   │   ├── layout/              # AppShell, NavSidebar, BottomNav, AppBar
 │   │   ├── subscriptions/       # Cards, detail, message grid/timeline
-│   │   ├── wizard/              # 5-step wizard components
+│   │   ├── wizard/              # 4-step wizard components
 │   │   └── settings/            # Provider form, prompt editor
 │   └── lib/
 │       ├── ai/
