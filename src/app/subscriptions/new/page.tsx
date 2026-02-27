@@ -11,14 +11,16 @@ export default function NewSubscriptionPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [hasActiveProvider, setHasActiveProvider] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     async function checkLLM() {
       try {
         const res = await fetch('/api/settings/llm-providers/active');
         if (!res.ok) throw new Error('Failed');
-        const { hasActive } = await res.json();
-        setHasActiveProvider(hasActive);
+        const data: { hasActive: boolean; isAdmin: boolean } = await res.json();
+        setHasActiveProvider(data.hasActive);
+        setIsAdmin(data.isAdmin);
       } catch {
         setHasActiveProvider(false);
       } finally {
@@ -44,15 +46,19 @@ export default function NewSubscriptionPage() {
           <h2 className="text-xl font-semibold">需要先配置 AI 供应商</h2>
           <p className="text-muted-foreground">
             新建订阅向导需要 AI 能力来自动发现数据源和生成采集脚本。
-            请先在配置页添加并激活一个 LLM 供应商。
+            {isAdmin
+              ? '请先在配置页添加并激活一个 LLM 供应商。'
+              : '请联系管理员配置 AI 供应商后再试。'}
           </p>
           <div className="flex gap-3 mt-2">
             <Button variant="outline" onClick={() => router.back()}>
               返回
             </Button>
-            <Link href="/settings">
-              <Button>前往配置</Button>
-            </Link>
+            {isAdmin && (
+              <Link href="/settings">
+                <Button>前往配置</Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>
