@@ -64,20 +64,12 @@ export async function generateScriptAgent(
     .replace('{{description}}', source.description || '无描述')
     .replace('{{criteria}}', source.criteria?.trim() || '无');
 
-  const criteriaHint = source.criteria?.trim()
-    ? `\n监控条件：${source.criteria.trim()}`
-    : '';
-
   const userPromptSuffix = source.userPrompt?.trim()
     ? `\n\n用户补充说明：\n${source.userPrompt.trim()}`
     : '';
 
   const messages: Message[] = [
-    { role: 'system', content: systemContent },
-    {
-      role: 'user',
-      content: `请为以下数据源编写采集脚本：\n标题：${source.title}\nURL：${source.url}\n描述：${source.description || '无'}${criteriaHint}${userPromptSuffix}`,
-    },
+    { role: 'user', content: systemContent + userPromptSuffix },
   ];
 
   const openai = buildOpenAIClient(provider);

@@ -50,11 +50,7 @@ export async function repairScriptAgent(
     .replace('{{script}}', input.script);
 
   const messages: Message[] = [
-    { role: 'system', content: systemContent },
-    {
-      role: 'user',
-      content: `请修复以下采集脚本。\n\n目标 URL：${input.url}\n\n错误信息：\n${input.lastError}\n\n当前脚本：\n\`\`\`javascript\n${input.script}\n\`\`\``,
-    },
+    { role: 'user', content: systemContent },
   ];
 
   const openai = buildOpenAIClient(provider);

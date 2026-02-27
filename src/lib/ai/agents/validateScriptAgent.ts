@@ -58,8 +58,7 @@ export async function validateScriptAgent(
     .replace('{{items}}', itemsPreview);
 
   const messages: Message[] = [
-    { role: 'system', content: systemContent },
-    { role: 'user', content: '请完成审查并输出结果。' },
+    { role: 'user', content: systemContent },
   ];
 
   const openai = buildOpenAIClient(provider);

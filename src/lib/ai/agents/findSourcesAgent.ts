@@ -44,11 +44,7 @@ export async function findSourcesAgent(
     .replace('{{criteria}}', criteria ?? '无');
 
   const messages: Message[] = [
-    { role: 'system', content: systemContent },
-    {
-      role: 'user',
-      content: `请为主题"${topic}"找到 5-10 个高质量数据源。${criteria ? `监控条件：${criteria}` : ''}`,
-    },
+    { role: 'user', content: systemContent },
   ];
 
   const openai = buildOpenAIClient(provider);
