@@ -13,6 +13,8 @@ export interface SmtpConfigData {
   fromEmail?: string | null;
   fromName?: string | null;
   requireVerification: boolean;
+  provider: string; // 'smtp' | 'zeabur'
+  zeaburApiKey?: string | null;
 }
 
 export interface SendEmailOptions {
@@ -42,6 +44,8 @@ export function getSmtpConfig(): SmtpConfigData | null {
     fromEmail: config.fromEmail,
     fromName: config.fromName,
     requireVerification: config.requireVerification ?? true,
+    provider: config.provider ?? 'smtp',
+    zeaburApiKey: config.zeaburApiKey,
   };
 }
 
@@ -50,7 +54,11 @@ export function getSmtpConfig(): SmtpConfigData | null {
  */
 export function isSmtpConfigured(): boolean {
   const config = getSmtpConfig();
-  return !!(config && config.host && config.user && config.password);
+  if (!config) return false;
+  if (config.provider === 'zeabur') {
+    return !!(config.zeaburApiKey && config.fromEmail);
+  }
+  return !!(config.host && config.user && config.password);
 }
 
 /**
@@ -80,13 +88,51 @@ function createTransporter(config: SmtpConfigData) {
 }
 
 /**
- * Send email using configured SMTP
+ * Send email via Zeabur Email API
+ */
+async function sendEmailViaZeabur(
+  config: SmtpConfigData,
+  { to, subject, html, text }: SendEmailOptions
+): Promise<{ success: boolean; error?: string }> {
+  const fromEmail = config.fromEmail || config.user;
+  const fromName = config.fromName || 'Subscribe Anything';
+
+  const res = await fetch('https://api.zeabur.com/api/v1/zsend/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.zeaburApiKey}`,
+    },
+    body: JSON.stringify({
+      from: `${fromName} <${fromEmail}>`,
+      to: [to],
+      subject,
+      html,
+      text,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const msg = body?.message || body?.error || res.statusText;
+    return { success: false, error: `Zeabur Email error ${res.status}: ${msg}` };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Send email using configured provider (SMTP or Zeabur Email)
  */
 export async function sendEmail({ to, subject, html, text }: SendEmailOptions): Promise<{ success: boolean; error?: string }> {
   const config = getSmtpConfig();
 
   if (!config) {
     return { success: false, error: 'SMTP not configured' };
+  }
+
+  if (config.provider === 'zeabur') {
+    return sendEmailViaZeabur(config, { to, subject, html, text });
   }
 
   const transporter = createTransporter(config);

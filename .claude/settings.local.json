@@ -23,7 +23,11 @@
       "Bash(echo EXIT:$?:*)",
       "Bash(git:*)",
       "Bash(NODE_OPTIONS=\"--trace-deprecation\" node:*)",
-      "Bash(dir D:\\\\code\\\\subscribe-anything\\\\favicon:*)"
+      "Bash(dir D:\\\\code\\\\subscribe-anything\\\\favicon:*)",
+      "mcp__chrome-devtools__list_network_requests",
+      "mcp__chrome-devtools__get_network_request",
+      "mcp__chrome-devtools__list_console_messages",
+      "WebFetch(domain:zeabur.com)"
     ]
   }
 }

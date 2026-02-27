@@ -16,11 +16,13 @@ import { useToast } from '@/components/ui/use-toast';
 
 interface SmtpFormData {
   configured: boolean;
+  provider: string;
   host: string;
   port: number;
   secure: boolean;
   user: string;
   password: string;
+  zeaburApiKey: string;
   fromEmail: string;
   fromName: string;
   requireVerification: boolean;
@@ -43,11 +45,13 @@ export default function SmtpConfigForm() {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [form, setForm] = useState<SmtpFormData>({
     configured: false,
+    provider: 'smtp',
     host: '',
     port: 465,
     secure: true,
     user: '',
     password: '',
+    zeaburApiKey: '',
     fromEmail: '',
     fromName: 'Subscribe Anything',
     requireVerification: true,
@@ -272,8 +276,8 @@ export default function SmtpConfigForm() {
       {/* SMTP Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">SMTP 邮件服务</CardTitle>
-          <CardDescription>配置用于发送注册验证码的 SMTP 邮件服务器</CardDescription>
+          <CardTitle className="text-base">邮件发送服务</CardTitle>
+          <CardDescription>配置用于发送注册验证码的邮件服务</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
@@ -290,74 +294,129 @@ export default function SmtpConfigForm() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2 space-y-2">
-              <Label htmlFor="smtp-host">SMTP 服务器</Label>
-              <Input
-                id="smtp-host"
-                value={form.host}
-                onChange={e => set('host', e.target.value)}
-                placeholder="smtp.example.com"
-                autoComplete="off"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="smtp-port">端口</Label>
-              <Input
-                id="smtp-port"
-                type="number"
-                value={form.port}
-                onChange={e => set('port', Number(e.target.value))}
-                placeholder="465"
-              />
+          {/* Provider selector */}
+          <div className="space-y-2">
+            <Label>邮件服务提供商</Label>
+            <div className="flex rounded-md border overflow-hidden w-fit">
+              <button
+                type="button"
+                className={`px-4 py-1.5 text-sm transition-colors ${form.provider === 'smtp' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                onClick={() => set('provider', 'smtp')}
+              >
+                SMTP
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-1.5 text-sm transition-colors border-l ${form.provider === 'zeabur' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                onClick={() => set('provider', 'zeabur')}
+              >
+                Zeabur Email
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Switch
-              id="smtp-secure"
-              checked={form.secure}
-              onCheckedChange={val => set('secure', val)}
-            />
-            <Label htmlFor="smtp-secure">SSL/TLS（推荐开启，端口 465）</Label>
-          </div>
+          {form.provider === 'smtp' && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2 space-y-2">
+                  <Label htmlFor="smtp-host">SMTP 服务器</Label>
+                  <Input
+                    id="smtp-host"
+                    value={form.host}
+                    onChange={e => set('host', e.target.value)}
+                    placeholder="smtp.example.com"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="smtp-port">端口</Label>
+                  <Input
+                    id="smtp-port"
+                    type="number"
+                    value={form.port}
+                    onChange={e => set('port', Number(e.target.value))}
+                    placeholder="465"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="smtp-secure"
+                  checked={form.secure}
+                  onCheckedChange={val => set('secure', val)}
+                />
+                <Label htmlFor="smtp-secure">SSL/TLS（推荐开启，端口 465）</Label>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="smtp-user">用户名</Label>
+                <Input
+                  id="smtp-user"
+                  value={form.user}
+                  onChange={e => set('user', e.target.value)}
+                  placeholder="your@email.com"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="smtp-password">密码 / 授权码</Label>
+                <Input
+                  id="smtp-password"
+                  type="password"
+                  value={form.password}
+                  onChange={e => set('password', e.target.value)}
+                  placeholder={
+                    hasExistingPassword && !form.password
+                      ? passwordFocused ? '不修改请留空' : '••••••••'
+                      : '输入密码或授权码'
+                  }
+                  autoComplete="new-password"
+                  onFocus={() => setPasswordFocused(true)}
+                  onBlur={() => setPasswordFocused(false)}
+                />
+              </div>
+            </>
+          )}
+
+          {form.provider === 'zeabur' && (
+            <>
+              <div className="rounded-md bg-muted px-4 py-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Zeabur Email 说明</p>
+                <p>Zeabur Email 使用 HTTP API 发送邮件，不受 SMTP 端口封锁影响。需要在{' '}
+                  <a href="https://dash.zeabur.com" target="_blank" rel="noopener noreferrer" className="underline">
+                    Zeabur 控制台
+                  </a>
+                  {' '}开通 Email 服务并创建 API Key，同时需要完成发件域名 DKIM/SPF 验证。</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="zeabur-api-key">Zeabur Email API Key</Label>
+                <Input
+                  id="zeabur-api-key"
+                  type="password"
+                  value={form.zeaburApiKey}
+                  onChange={e => set('zeaburApiKey', e.target.value)}
+                  placeholder={
+                    form.configured && form.zeaburApiKey === '••••••••'
+                      ? '不修改请留空'
+                      : 'zs_...'
+                  }
+                  autoComplete="new-password"
+                />
+              </div>
+            </>
+          )}
 
           <div className="space-y-2">
-            <Label htmlFor="smtp-user">用户名</Label>
-            <Input
-              id="smtp-user"
-              value={form.user}
-              onChange={e => set('user', e.target.value)}
-              placeholder="your@email.com"
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="smtp-password">密码 / 授权码</Label>
-            <Input
-              id="smtp-password"
-              type="password"
-              value={form.password}
-              onChange={e => set('password', e.target.value)}
-              placeholder={
-                hasExistingPassword && !form.password
-                  ? passwordFocused ? '不修改请留空' : '••••••••'
-                  : '输入密码或授权码'
-              }
-              autoComplete="new-password"
-              onFocus={() => setPasswordFocused(true)}
-              onBlur={() => setPasswordFocused(false)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="smtp-from-email">发件人邮箱（可选）</Label>
+            <Label htmlFor="smtp-from-email">
+              发件人邮箱{form.provider === 'zeabur' ? '' : '（可选）'}
+            </Label>
             <Input
               id="smtp-from-email"
               value={form.fromEmail}
               onChange={e => set('fromEmail', e.target.value)}
-              placeholder="留空则使用用户名"
+              placeholder={form.provider === 'zeabur' ? '必须为已验证域名下的邮箱' : '留空则使用用户名'}
               autoComplete="off"
             />
           </div>

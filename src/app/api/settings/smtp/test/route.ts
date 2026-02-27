@@ -15,12 +15,13 @@ export async function POST(req: Request) {
       return Response.json({ error: 'testEmail is required' }, { status: 400 });
     }
 
-    // Check that SMTP is configured
+    // Check that email provider is configured
     const db = getDb();
     const config = db.select().from(smtpConfig).where(eq(smtpConfig.id, 'default')).get();
 
-    if (!config || !config.host || !config.user || !config.password) {
-      return Response.json({ error: '请先保存 SMTP 配置' }, { status: 400 });
+    const isZeabur = config?.provider === 'zeabur';
+    if (!config || (isZeabur ? !config.zeaburApiKey : (!config.host || !config.user || !config.password))) {
+      return Response.json({ error: '请先保存邮件服务配置' }, { status: 400 });
     }
 
     const result = await sendEmail({

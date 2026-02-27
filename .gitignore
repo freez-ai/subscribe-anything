@@ -7,3 +7,5 @@ data
 *.db
 *.db-wal
 *.db-shm
+.claude
+tsconfig.tsbuildinfo
