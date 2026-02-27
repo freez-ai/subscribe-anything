@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { getDb } from '@/lib/db';
 import { smtpConfig } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -65,7 +66,7 @@ export function isVerificationRequired(): boolean {
  * Create nodemailer transporter from config
  */
 function createTransporter(config: SmtpConfigData) {
-  return nodemailer.createTransport({
+  const options: SMTPTransport.Options = {
     host: config.host,
     port: config.port,
     secure: config.secure,
@@ -74,7 +75,8 @@ function createTransporter(config: SmtpConfigData) {
       pass: config.password,
     },
     family: 4,
-  });
+  };
+  return nodemailer.createTransport(options);
 }
 
 /**
