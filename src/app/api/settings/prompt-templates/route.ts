@@ -39,13 +39,14 @@ export async function GET() {
       userRows.map((t) => [t.id.slice(session.userId.length + 1), t])
     );
 
-    // Merge in fixed order; always expose base ID so the frontend uses stable URLs
+    // Merge in fixed order; always expose base ID so the frontend uses stable URLs.
+    // isCustomized tells the frontend whether the user has a personal override.
     const result = BASE_TEMPLATE_IDS.flatMap((baseId) => {
       const custom = userMap.get(baseId);
       const base = baseMap.get(baseId);
       const tpl = custom ?? base;
       if (!tpl) return [];
-      return [{ ...tpl, id: baseId }];
+      return [{ ...tpl, id: baseId, isCustomized: !!custom }];
     });
 
     return Response.json(result);

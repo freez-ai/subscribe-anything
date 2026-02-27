@@ -29,6 +29,7 @@ interface PromptTemplate {
   description?: string | null;
   content: string;
   providerId?: string | null;
+  isCustomized: boolean;
 }
 
 interface Provider {
@@ -56,12 +57,14 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
   );
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [isCustomized, setIsCustomized] = useState(template.isCustomized);
 
   // Sync when template data changes (e.g. after reset)
   useEffect(() => {
     setContent(template.content);
     setSelectedProviderId(template.providerId ?? UNSET);
-  }, [template.content, template.providerId]);
+    setIsCustomized(template.isCustomized);
+  }, [template.content, template.providerId, template.isCustomized]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -72,6 +75,7 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
         body: JSON.stringify({ content }),
       });
       if (!res.ok) throw new Error('Failed to save');
+      setIsCustomized(true);
       toast({ title: '保存成功', description: `"${template.name}" 已更新` });
     } catch {
       toast({ title: '保存失败', variant: 'destructive' });
@@ -90,6 +94,7 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
         body: JSON.stringify({ providerId: newProviderId }),
       });
       if (!res.ok) throw new Error('Failed to update provider');
+      setIsCustomized(true);
       toast({ title: '供应商已更新' });
     } catch {
       // Revert on failure
@@ -204,6 +209,7 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
                   size="sm"
                   onClick={handleReset}
                   disabled={resetting || saving}
+                  className={isCustomized ? '' : 'hidden'}
                 >
                   <RotateCcw className="h-3.5 w-3.5 mr-1" />
                   {resetting ? '恢复中...' : '恢复默认'}
