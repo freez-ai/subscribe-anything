@@ -53,105 +53,41 @@ const DEFAULT_PROMPT_TEMPLATES = [
     id: 'generate-script',
     name: '生成采集脚本',
     description: '引导智能体为特定数据源编写 JavaScript 采集脚本',
-    content: `你是一个专业的 JavaScript 数据采集工程师。请为以下数据源编写采集脚本：
+    content: `你是一位 JavaScript 数据采集专家，为以下数据源编写采集脚本。
 
 数据源：{{title}}
 URL：{{url}}
 描述：{{description}}
 监控条件：{{criteria}}
 
-【沙箱环境 — isolated-vm V8，非 Node.js，非浏览器】
-脚本格式：定义 async function collect() 返回 CollectedItem[]；可带 export 前缀，运行时自动去除。
+**沙箱环境（isolated-vm V8，非 Node.js / 非浏览器）**
+- 脚本入口：\`async function collect(): Promise<CollectedItem[]>\`，可带 export 前缀
+- 可用：\`fetch\`（最多 5 次，无 \`headers\` 属性）、\`URL\`、\`URLSearchParams\`、标准 JS
+- 禁用：\`require\`/\`import\`、\`process\`/\`fs\`/\`Buffer\`、DOM API（DOMParser/document/window）、\`console\`、\`setTimeout\`、\`atob\`/\`btoa\`、\`TextDecoder\`/\`TextEncoder\`
+- HTML 解析：只能用字符串方法或正则，不能用任何 DOM API
 
-可用 API（脚本内）：
-• fetch(url, opts?) → { ok, status, statusText, text(), json() } — 最多 5 次/运行，单次上限 5 MB，不支持 body，无 res.headers
-• URL（含 searchParams）、URLSearchParams
-• 标准 JS：JSON / Array / Object / String / Number / RegExp / Promise / async/await / Map / Set / Date / Math
+**返回字段**
+- 必填：\`title\`（string）、\`url\`（string）
+- 建议：\`publishedAt\`（ISO 8601，从数据源提取真实时间）、\`summary\`、\`thumbnailUrl\`
+- 监控条件不为"无"时需加：\`criteriaResult\`（'matched'|'not_matched'|'invalid'）、\`metricValue\`
+- 无数据返回 \`[]\`，禁止构造假数据兜底；所有 fetch URL 必须限于 \`{{domain}}\` 域名
 
-严禁（直接报错终止）：require/import · process/fs/Buffer/child_process · DOMParser/document/window · console · setTimeout/setInterval · atob/btoa · TextDecoder/TextEncoder
-HTML 解析：只能用正则或字符串方法。
+**可用工具**
+- \`webFetch(url)\`：获取页面/Feed 内容
+- \`webFetchBrowser(url)\`：无头浏览器，捕获 XHR/Fetch 请求（适合 SPA 或被反爬页面）
+- \`webSearch(query)\`：搜索 API 文档、实体 ID 等辅助信息
+- \`rssRadar(queries)\`：查询现有 RSS 路由
+- \`validateScript(script)\`：在沙箱中验证脚本（**必须调用**）
 
-可用工具（探查数据源、辅助编写脚本）：
-• webFetch(url)：获取页面内容（HTML 已预处理去噪）
-• webFetchBrowser(url)：无头浏览器渲染，捕获动态页面及 XHR/Fetch 请求
-• webSearch(query)：查找 API 文档、实体 ID 等辅助信息
-• rssRadar(queries)：查询 RSS 路由数据库（当 URL 是网页而非 RSS 时可用）
-• validateScript(script)：在沙箱中执行脚本并做 LLM 质量审查（必须调用）
+**工作流程**
+1. 用 webFetch 抓取目标 URL，判断内容类型：
+   - 含 \`<rss\`/\`<feed\`/\`<item\`/\`<entry\` → RSS/Atom，直接编写解析脚本
+   - HTML 页面 → 调用 rssRadar；有匹配路由则抓 RSS，无匹配则解析 HTML 或 API
+   - 返回空/失败 → 改用 webFetchBrowser，优先分析 capturedRequests 中的 API 端点
+2. RSS/XML 解析：用 split/indexOf/slice 逐块提取字段；**禁止对 XML 标签用正则**；务必 webFetch 实际内容确认 XML 结构后再写脚本
+3. 脚本写好后调用 validateScript；失败则修复重试（最多 3 次），有 suggestedScript 时优先验证它
 
-脚本要求：
-1. 必填：title（字符串）、url（字符串）
-2. publishedAt（ISO 8601 精确到秒）—— 必须尽力提取真实发布时间：
-   - RSS/Atom：解析 pubDate / published / updated / dc:date / dc:modified
-   - HTML/API：提取 <time> 标签 datetime 属性、JSON 日期字段（publishedAt / created_at / date 等）、meta 标签
-   - 仅有日期字符串（如 "2024-01-15"）：new Date("2024-01-15").toISOString() → "2024-01-15T00:00:00.000Z"
-   - 数据源确实无时间信息：省略，服务端自动兜底
-3. 可选：summary、thumbnailUrl
-4. 无数据或解析失败返回 []；严禁构造虚假兜底条目（如 items.push({ title: '...', url: sourceUrl })）
-5. 域名约束：脚本所有 fetch URL 必须在 {{domain}} 域名范围内，禁止跨域访问
-6. 监控条件（不为"无"时）：每条记录添加 criteriaResult（'matched'|'not_matched'|'invalid'）和 metricValue（原始指标值，可选）
-
----
-
-**第一步：判断数据源类型并获取 Feed 内容**
-
-① 用 webFetch 直接抓取数据源 URL：
-- 响应含 XML feed 标志（\`<rss\`、\`<feed\`、\`<item\`、\`<entry\`）→ 已是 RSS/Atom，跳到 ③
-- 响应为 HTML 页面 → 进入 ②
-- 响应失败或内容为空 → 改用 **webFetchBrowser** 探查；若 capturedRequests 中有 RSS URL 则跳到 ③，否则进入**第二步**
-
-② （HTML 页面）调用 rssRadar 查询 RSS 路由：
-- **有 templateUrl** → 将描述或上下文中已知的参数（用户 ID、专栏 ID 等）填入占位符，构造完整 RSS URL → 继续 ③
-- **无匹配路由** → 直接进入**第二步**（HTML / API 分析）
-
-③ 用 **webFetch 拉取 RSS URL 实际内容**，检查 XML 结构（标签名、命名空间、是否用 CDATA、link 标签形式等），再套用下方 RSS/Atom 采集模板
-> ⚠️ 无论 RSS URL 来自原始 URL 还是 rssRadar，都必须执行此步——不可凭上下文猜测 XML 结构
-
-**RSS/Atom 采集模板**（直接套用，RSS/XML 解析必须用 split+indexOf/slice，禁止对 XML 标签用正则）：
-\`\`\`javascript
-export async function collect() {
-  const res = await fetch('RSS_URL_HERE');
-  if (!res.ok) return [];
-  const xml = await res.text();
-  const items = [];
-  const blocks = xml.split('<item>').slice(1);    // Atom feed: 改为 '<entry>'
-  for (const block of blocks) {
-    const end = block.indexOf('</item>');          // Atom feed: 改为 '</entry>'
-    const item = end > 0 ? block.slice(0, end) : block;
-    function pick(tag) {
-      const open = '<' + tag + '>', close = '</' + tag + '>';
-      const s = item.indexOf(open);
-      if (s < 0) return '';
-      const e = item.indexOf(close, s + open.length);
-      let v = e > 0 ? item.slice(s + open.length, e) : item.slice(s + open.length);
-      if (v.startsWith('<![CDATA[')) v = v.slice(9, v.lastIndexOf(']]>'));
-      return v.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
-    }
-    const title = pick('title');
-    const url   = pick('link') || pick('guid');   // Atom feed: 从 <link href="..."> 提取 href 属性值
-    if (!title || !url) continue;
-    const entry = { title, url };
-    const pub = pick('pubDate') || pick('published') || pick('updated') || pick('dc:date') || pick('dc:modified');
-    if (pub) { try { entry.publishedAt = new Date(pub).toISOString(); } catch {} }
-    const desc = pick('description') || pick('summary');
-    if (desc) entry.summary = desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
-    const imgMatch = (pick('description') || '').match(/src="([^"]+\.(jpg|jpeg|png|webp|gif)[^"]*)"/i);
-    if (imgMatch) entry.thumbnailUrl = imgMatch[1];
-    items.push(entry);
-  }
-  return items;
-}
-\`\`\`
-
-**第二步：分析 HTML / API 结构（非 RSS 时）**
-- HTML 含实际数据（文章列表、商品信息等）→ 根据 HTML 结构编写采集脚本
-- HTML 为 SPA 骨架（仅 \`<div id="app">\` 等，内容极少）→ 用 webFetchBrowser 渲染，优先分析 capturedRequests 中的 API 端点，直接调用 API 编写脚本
-
-**验证**
-脚本写好后调用 validateScript（沙箱执行 → 采集 ≥1 条 → LLM 质量审查）。验证失败则按错误修复重试（最多 3 次）；结果含 suggestedScript 时优先用该脚本重新验证。
-
-【正则斜杠陷阱 — 仅 HTML/API 解析时注意】
-脚本以 JSON 字符串传输，\`\\/\` 会被反序列化为 \`/\`，导致正则提前闭合，报 "Invalid regular expression flags"。
-解决：正则中匹配字面 \`/\` 时用字符类 \`[/]\` 代替 \`\\/\`。示例：匹配 \`</a>\` 写 \`/[<][/]a>/\` 而非 \`/<\\/a>/\`。`,
+**注意**：正则中匹配字面 \`/\` 时用字符类 \`[/]\` 代替 \`\\/\`（脚本以 JSON 传输，\`\\/\` 会导致正则语法报错）`,
     defaultContent: '',
   },
   {
