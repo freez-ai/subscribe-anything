@@ -28,7 +28,7 @@ export function NavSidebar({ className }: NavSidebarProps) {
       )}
     >
       <div className="flex h-16 items-center border-b px-6 gap-2.5">
-        <Image src="/android-chrome-192x192.png" alt="logo" width={28} height={28} className="rounded-md" />
+        <Image src="/favicon-32x32.png" alt="logo" width={28} height={28} className="rounded-md" unoptimized />
         <span className="text-lg font-semibold">订阅万物</span>
       </div>
 

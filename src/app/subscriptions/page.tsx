@@ -15,12 +15,6 @@ export default function SubscriptionsPage() {
       {/* Page header — desktop */}
       <div className="hidden md:flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">我的订阅</h1>
-        <Link href="/subscriptions/new" onClick={markNewWizard}>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            新建订阅
-          </Button>
-        </Link>
       </div>
 
       {/* Mobile page title */}

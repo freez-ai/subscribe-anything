@@ -18,11 +18,10 @@ export function AppBar({ className }: AppBarProps) {
       )}
     >
       <div className="flex items-center gap-2">
-        <Image src="/android-chrome-192x192.png" alt="logo" width={28} height={28} className="rounded-md" />
+        <Image src="/favicon-32x32.png" alt="logo" width={28} height={28} className="rounded-md" unoptimized />
         <span className="text-base font-semibold">订阅万物</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <UserMenu />
         <a
           href="https://github.com/freez-ai/subscribe-anything"
           target="_blank"
@@ -32,6 +31,7 @@ export function AppBar({ className }: AppBarProps) {
         >
           <Github className="h-5 w-5" />
         </a>
+        <UserMenu />
       </div>
     </header>
   );
