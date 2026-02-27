@@ -20,7 +20,7 @@ const DEFAULT_PROMPT_TEMPLATES = [
    - 有匹配路由 → 将 \`:param\` 占位符填入已知参数，构造完整 RSS URL
    - 无匹配路由 → 保留原始网页 URL；禁止自行拼造 RSSHub 路径
 
-3. checkFeed：将所有 RSS URL **合并为一次**调用，每项传 \`url\`、\`templateUrl\`、\`keywords\`（实体所有已知别名）
+3. checkFeed：将所有 RSS URL **合并为一次**调用，传 \`urls\`（RSS URL 列表）和 \`keywords\`（实体所有已知别名，共用）
    - \`valid: true\` → 保留
    - \`templateMismatch: true\` → 修正 URL 结构后重新验证
    - \`keywordFound: false\` → webSearch 找到正确实体 ID，重新构造后验证

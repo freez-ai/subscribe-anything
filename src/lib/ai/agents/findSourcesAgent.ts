@@ -159,23 +159,23 @@ export async function findSourcesAgent(
             success: true,
           });
         } else if (tc.name === 'checkFeed') {
-          const feeds: { url: string; keywords?: string[]; templateUrl?: string }[] =
-            JSON.parse(tc.args).feeds ?? [];
-          const results = await Promise.all(
-            feeds.map((f) => checkFeed(f.url, f.keywords, f.templateUrl))
-          );
-          resultContent = JSON.stringify(results.map((r, i) => ({ url: feeds[i].url, ...r })));
+          const args = JSON.parse(tc.args);
+          const urls: string[] = args.urls ?? [];
+          const keywords: string[] | undefined = args.keywords?.length ? args.keywords : undefined;
+          const templateUrls: string[] | undefined = args.templateUrls?.length ? args.templateUrls : undefined;
+          const results = await checkFeed(urls, keywords, templateUrls);
+          resultContent = JSON.stringify(results.map((r, i) => ({ url: urls[i], ...r })));
           const validCount = results.filter((r) => r.valid).length;
           const summary = results.map((r, i) => {
-            if (r.valid) return `✓ ${feeds[i].url}`;
-            if (r.templateMismatch) return `✗ ${feeds[i].url} (结构有误)`;
-            if (r.keywordFound === false) return `✗ ${feeds[i].url} (实体 ID 有误)`;
-            return `✗ ${feeds[i].url} (HTTP ${r.status})`;
+            if (r.valid) return `✓ ${urls[i]}`;
+            if (r.templateMismatch) return `✗ ${urls[i]} (结构有误)`;
+            if (r.keywordFound === false) return `✗ ${urls[i]} (实体 ID 有误)`;
+            return `✗ ${urls[i]} (HTTP ${r.status})`;
           }).join('\n');
           emit({
             type: 'tool_result',
             name: 'checkFeed',
-            resultSummary: `${feeds.length} 个 feed，${validCount} 个有效\n${summary}`,
+            resultSummary: `${urls.length} 个 feed，${validCount} 个有效\n${summary}`,
             success: validCount > 0,
           });
         } else {
