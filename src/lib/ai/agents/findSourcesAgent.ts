@@ -162,8 +162,7 @@ export async function findSourcesAgent(
           const args = JSON.parse(tc.args);
           const urls: string[] = args.urls ?? [];
           const keywords: string[] | undefined = args.keywords?.length ? args.keywords : undefined;
-          const templateUrls: string[] | undefined = args.templateUrls?.length ? args.templateUrls : undefined;
-          const results = await checkFeed(urls, keywords, templateUrls);
+          const results = await checkFeed(urls, keywords);
           resultContent = JSON.stringify(results.map((r, i) => ({ url: urls[i], ...r })));
           const validCount = results.filter((r) => r.valid).length;
           const summary = results.map((r, i) => {

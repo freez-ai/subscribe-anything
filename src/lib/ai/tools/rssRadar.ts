@@ -61,6 +61,40 @@ async function getRules(baseUrl: string): Promise<Record<string, unknown>> {
 }
 
 /**
+ * Given a concrete feed URL, find the first rssRadar templateUrl whose path
+ * pattern matches the URL's path. Uses the in-memory cache — returns null if
+ * the cache is cold or no template matches (so callers degrade gracefully).
+ */
+export function findMatchingTemplateUrl(url: string): string | null {
+  if (!cachedRules) return null;
+  let urlPath: string;
+  try {
+    urlPath = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+
+  for (const domainData of Object.values(cachedRules)) {
+    if (!domainData || typeof domainData !== 'object') continue;
+    const data = domainData as Record<string, unknown>;
+    for (const [subKey, subValue] of Object.entries(data)) {
+      if (subKey === '_name' || !Array.isArray(subValue)) continue;
+      for (const routeItem of subValue as unknown[]) {
+        if (!routeItem || typeof routeItem !== 'object') continue;
+        const route = routeItem as Record<string, unknown>;
+        const target = String(route.target ?? '');
+        if (!target || !target.includes(':')) continue;
+        const pattern = target.replace(/:([^/]+)/g, '[^/]+');
+        if (new RegExp(`^${pattern}([/?#].*)?$`).test(urlPath)) {
+          return `${cachedBaseUrl}${target}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Search the radar rules for a given query.
  * Query can be a domain ("bilibili.com"), website name ("哔哩哔哩"), or keyword.
  * Returns up to 20 matching routes built against the active RSS instance.

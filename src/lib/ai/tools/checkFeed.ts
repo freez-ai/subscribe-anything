@@ -2,16 +2,20 @@
  * checkFeed tool — lightweight RSS/Atom feed validator.
  *
  * Checks (in order):
- *   1. HTTP status is 2xx
- *   2. Response body contains XML feed markers (<rss, <feed, <item, or <entry>)
- *   3. (Optional) Response body contains a keyword — if absent, entity ID is likely wrong
+ *   1. Auto-detect templateUrl from rssRadar cache and verify URL path matches
+ *      the pattern (no network, catches un-replaced :param placeholders)
+ *   2. HTTP status is 2xx
+ *   3. Response body contains XML feed markers (<rss, <feed, <item, or <entry>)
+ *   4. (Optional) Response body contains a keyword — if absent, entity ID is likely wrong
  *
- * Accepts `keywords` and `urls` as separate top-level arrays — keywords are common
- * across all feeds, while each feed has its own URL and optional templateUrl.
+ * Accepts `keywords` and `urls` as top-level fields; templateUrl matching is
+ * automatic — callers no longer need to pass templateUrls explicitly.
  *
  * Returns a minimal result object to minimise token usage.
- * Intentionally avoids returning to feed body (unlike webFetch).
+ * Intentionally avoids returning the feed body (unlike webFetch).
  */
+
+import { findMatchingTemplateUrl } from './rssRadar';
 
 const TIMEOUT_MS = 10_000;
 const MAX_READ_BYTES_NO_KW = 32 * 1024; // 32 KB  — enough to detect XML markers
@@ -20,34 +24,17 @@ const MAX_READ_BYTES_WITH_KW = 256 * 1024; // 256 KB — enough to find entity n
 export interface CheckFeedResult {
   valid: boolean;
   status: number;
-  /** Present when `templateUrl` was supplied and URL path does not match the pattern. */
+  /** URL path does not match any known rssRadar template pattern. */
   templateMismatch?: boolean;
   /** Present when `keywords` was supplied. */
   keywordFound?: boolean;
-  /** Guidance for LLM when a check fails. */
+  /** Guidance for the LLM when a check fails. */
   hint?: string;
-}
-
-/**
- * Convert a rssRadar templateUrl (with :param placeholders) into a RegExp
- * that matches a concrete URL path.
- * e.g. "https://rsshub.app/bilibili/user/video/:uid" → /^\/bilibili\/user\/video\/[^/]+(\/.*)?$/
- */
-function buildTemplatePattern(templateUrl: string): RegExp | null {
-  try {
-    const path = new URL(templateUrl).pathname;
-    // Replace each :param segment with a non-empty path-segment matcher
-    const pattern = path.replace(/:([^/]+)/g, '[^/]+');
-    return new RegExp(`^${pattern}(/.*)?$`);
-  } catch {
-    return null;
-  }
 }
 
 export async function checkFeed(
   urls: string[],
   keywords?: string[],
-  templateUrls?: string[],
 ): Promise<CheckFeedResult[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -56,47 +43,54 @@ export async function checkFeed(
   try {
     const results: CheckFeedResult[] = [];
 
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i];
-      const templateUrl = templateUrls?.[i];
+    for (const url of urls) {
+      // ── Check 1: template pattern (free, no network) ──────────────────────
+      const matchedTemplate = findMatchingTemplateUrl(url);
+      if (matchedTemplate !== null) {
+        // A template was found in cache — verify the URL fully matches (i.e. no
+        // remaining :param placeholders, correct segment count, etc.)
+        let urlPath: string;
+        try {
+          urlPath = new URL(url).pathname;
+        } catch {
+          results.push({
+            valid: false,
+            status: 0,
+            templateMismatch: true,
+            hint: `"${url}" is not a valid URL. Reconstruct it from the templateUrl "${matchedTemplate}" by replacing all :param placeholders with real values.`,
+          });
+          continue;
+        }
 
-      // ── Check 1: template pattern (free, no network) ──────────────────────────
-      if (templateUrl) {
-        const pattern = buildTemplatePattern(templateUrl);
-        if (pattern) {
-          let urlPath: string;
-          try {
-            urlPath = new URL(url).pathname;
-          } catch {
-            results.push({
-              valid: false,
-              status: 0,
-              templateMismatch: true,
-              hint: `The URL "${url}" is not a valid URL. Please construct it from the templateUrl "${templateUrl}" by replacing :param placeholders with real values.`,
-            });
-            continue;
-          }
-
-          if (!pattern.test(urlPath)) {
-            results.push({
-              valid: false,
-              status: 0,
-              templateMismatch: true,
-              hint: `URL path "${urlPath}" does not match templateUrl pattern "${new URL(templateUrl).pathname}". Make sure every :param placeholder is replaced with a real value and no extra segments are added.`,
-            });
-            continue;
-          }
+        // The matched template's pattern already validated the segment count, but
+        // reject if the concrete path still contains a raw ":param" segment.
+        if (urlPath.split('/').some((seg) => seg.startsWith(':'))) {
+          results.push({
+            valid: false,
+            status: 0,
+            templateMismatch: true,
+            hint: `URL path "${urlPath}" still contains un-replaced :param placeholders. Fill every placeholder from "${matchedTemplate}" with a real value.`,
+          });
+          continue;
         }
       }
+      // If matchedTemplate is null the cache is cold or the URL is not an RSSHub
+      // route — skip the template check and proceed to network checks.
 
-      // ── Check 2 & 3: HTTP + XML markers ───────────────────────────────────────
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; SubscribeAnything/1.0)',
-          Accept: 'application/rss+xml,application/atom+xml,text/xml,application/xml,*/*',
-        },
-      });
+      // ── Check 2 & 3: HTTP + XML markers ────────────────────────────────────
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; SubscribeAnything/1.0)',
+            Accept: 'application/rss+xml,application/atom+xml,text/xml,application/xml,*/*',
+          },
+        });
+      } catch {
+        results.push({ valid: false, status: 0 });
+        continue;
+      }
 
       if (res.status < 200 || res.status >= 300) {
         results.push({ valid: false, status: res.status });
@@ -137,7 +131,7 @@ export async function checkFeed(
         results.push({
           valid: keywordFound,
           status: res.status,
-          keywordFound: keywordFound,
+          keywordFound,
           hint: !keywordFound
             ? `Feed is reachable but does not contain any of [${keywords.map((k) => `"${k}"`).join(', ')}]. The entity ID in the URL is likely wrong — use webSearch to find the correct ID and update the URL.`
             : undefined,
@@ -148,8 +142,6 @@ export async function checkFeed(
     }
 
     return results;
-  } catch {
-    return urls.map(() => ({ valid: false, status: 0 }));
   } finally {
     clearTimeout(timer);
   }
@@ -161,38 +153,28 @@ export const checkFeedToolDef = {
   function: {
     name: 'checkFeed',
     description:
-      'Validate multiple RSS/Atom feed URLs in parallel. For each feed, performs up to three checks:\n' +
-      '1. HTTP 2xx status\n' +
-      '2. Response body contains XML feed markers (<rss, <feed, <item>, or <entry>)\n' +
-      '3. (Optional) If keywords provided: Response body contains at least one of the keywords — catches mismatched entity IDs.\n\n' +
-      'Pass all feeds in a single call to maximise parallelism. Much cheaper in tokens than webFetch.',
+      'Validate multiple RSS/Atom feed URLs in parallel. Performs up to three checks per URL:\n' +
+      '1. Auto-detect templateUrl from rssRadar cache and verify URL path structure ' +
+      '(catches un-replaced :param placeholders without any network call)\n' +
+      '2. HTTP 2xx + XML feed markers in response body\n' +
+      '3. (Optional) If keywords provided: response body contains at least one keyword ' +
+      '(catches wrong entity IDs)\n\n' +
+      'No need to pass templateUrls — structure validation is automatic. ' +
+      'Pass all feeds in a single call to maximise parallelism.',
     parameters: {
       type: 'object',
       properties: {
         urls: {
           type: 'array',
-          items: {
-            type: 'string',
-            description: 'List of RSS/Atom feed URLs to validate',
-          },
+          items: { type: 'string' },
+          description: 'List of RSS/Atom feed URLs to validate (all :param placeholders must be filled in)',
         },
         keywords: {
           type: 'array',
-          items: {
-            type: 'string',
-            description:
-              'Channel/author/entity names and aliases to search in feed body (case-insensitive). ' +
-              'Valid if ANY keyword is found — pass all known aliases to avoid false negatives.',
-          },
-        },
-        templateUrls: {
-          type: 'array',
-          items: {
-            type: 'string',
-            description:
-              'Optional: List of rssRadar template URLs corresponding to each feed. ' +
-              'Used to verify URL structure before any network request.',
-          },
+          items: { type: 'string' },
+          description:
+            'Entity names and aliases to search in every feed body (case-insensitive, shared across all URLs). ' +
+            'Pass at least one — valid if ANY keyword is found. Include all known aliases to avoid false negatives.',
         },
       },
       required: ['urls'],
