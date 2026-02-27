@@ -92,11 +92,19 @@ HTML 解析：只能用正则或字符串方法。
 
 ---
 
-**第一步：判断数据源类型**
-用 webFetch 直接抓取数据源 URL，根据响应决定方案：
-- 响应含 XML feed 标志（\`<rss\`、\`<feed\`、\`<item\`、\`<entry\`）→ **RSS/Atom 方案**，套用下方模板
-- 响应为 HTML 页面 → **第二步**
-- 响应失败或内容为空 → 改用 **webFetchBrowser** 探查，再走第二步
+**第一步：判断数据源类型并获取 Feed 内容**
+
+① 用 webFetch 直接抓取数据源 URL：
+- 响应含 XML feed 标志（\`<rss\`、\`<feed\`、\`<item\`、\`<entry\`）→ 已是 RSS/Atom，跳到 ③
+- 响应为 HTML 页面 → 进入 ②
+- 响应失败或内容为空 → 改用 **webFetchBrowser** 探查；若 capturedRequests 中有 RSS URL 则跳到 ③，否则进入**第二步**
+
+② （HTML 页面）调用 rssRadar 查询 RSS 路由：
+- **有 templateUrl** → 将描述或上下文中已知的参数（用户 ID、专栏 ID 等）填入占位符，构造完整 RSS URL → 继续 ③
+- **无匹配路由** → 直接进入**第二步**（HTML / API 分析）
+
+③ 用 **webFetch 拉取 RSS URL 实际内容**，检查 XML 结构（标签名、命名空间、是否用 CDATA、link 标签形式等），再套用下方 RSS/Atom 采集模板
+> ⚠️ 无论 RSS URL 来自原始 URL 还是 rssRadar，都必须执行此步——不可凭上下文猜测 XML 结构
 
 **RSS/Atom 采集模板**（直接套用，RSS/XML 解析必须用 split+indexOf/slice，禁止对 XML 标签用正则）：
 \`\`\`javascript
@@ -650,8 +658,10 @@ function migrateEmailVerification(sqlite: InstanceType<typeof Database>) {
     )
   `);
 
-  // Idempotent column addition for existing databases
+  // Idempotent column additions for existing databases
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN require_verification INTEGER NOT NULL DEFAULT 1'); } catch { /* already exists */ }
+  try { sqlite.exec("ALTER TABLE smtp_config ADD COLUMN provider TEXT NOT NULL DEFAULT 'smtp'"); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN zeabur_api_key TEXT'); } catch { /* already exists */ }
 
   console.log('[DB] Email verification system migration complete');
 }
