@@ -242,9 +242,12 @@ function MasonryCard({
   const isFavorited = item.isFavorite !== false; // default to true
 
   return (
-    <button
+    <div
       onClick={onClick}
-      className="w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60 relative"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className="w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60 relative cursor-pointer"
     >
       {/* Favorite button */}
       <button
@@ -292,7 +295,7 @@ function MasonryCard({
           <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -315,9 +318,12 @@ function TimelineCard({
   const isFavorited = item.isFavorite !== false; // default to true
 
   return (
-    <button
+    <div
       onClick={onClick}
-      className="w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start bg-card hover:bg-accent/60 relative"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className="w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start bg-card hover:bg-accent/60 relative cursor-pointer"
     >
       {/* Favorite button */}
       <button
@@ -361,6 +367,6 @@ function TimelineCard({
           <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
         </div>
       </div>
-    </button>
+    </div>
   );
 }

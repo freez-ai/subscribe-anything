@@ -504,10 +504,16 @@ function MasonryCard({
   };
 
   return (
-    <button onClick={onClick} className={[
-      'w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60 relative',
-      isUnread ? 'border-primary/40' : 'border-border',
-    ].join(' ')}>
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className={[
+        'w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60 relative cursor-pointer',
+        isUnread ? 'border-primary/40' : 'border-border',
+      ].join(' ')}
+    >
       {/* Favorite button */}
       <button
         onClick={handleFavoriteClick}
@@ -548,7 +554,7 @@ function MasonryCard({
           <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -571,10 +577,16 @@ function TimelineCard({
   };
 
   return (
-    <button onClick={onClick} className={[
-      'w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start bg-card hover:bg-accent/60 relative',
-      isUnread ? 'border-primary/40' : 'border-border',
-    ].join(' ')}>
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      className={[
+        'w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start bg-card hover:bg-accent/60 relative cursor-pointer',
+        isUnread ? 'border-primary/40' : 'border-border',
+      ].join(' ')}
+    >
       {/* Favorite button */}
       <button
         onClick={handleFavoriteClick}
@@ -607,7 +619,7 @@ function TimelineCard({
           <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto" />
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
