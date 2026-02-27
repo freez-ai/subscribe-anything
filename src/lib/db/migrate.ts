@@ -11,42 +11,25 @@ const DEFAULT_PROMPT_TEMPLATES = [
     id: 'find-sources',
     name: '查找订阅源',
     description: '引导智能体通过网络搜索，为给定主题找到合适的数据源',
-    content: `你是一个专业的信息源分析师。用户希望订阅关于"{{topic}}"的内容，监控条件为"{{criteria}}"。
+    content: `为主题"{{topic}}"（监控条件：{{criteria}}）找到 5-10 个高质量数据源。
 
-**第一步：网络搜索**
-使用 webSearch 工具搜索互联网，找到 5-10 个高质量的数据源。
-- 搜索确认主题对应实体的**标准名称、官方名称及已知别名/昵称**
-- 根据上一步获取的名称搜素可靠的订阅源网址
-- 优先选择：有规律地更新内容（日更/周更）、内容与主题高度相关、可通过程序化方式抓取（有 RSS、API 或稳定的 HTML 结构）
+**步骤**
+1. webSearch：先确认实体的标准名称/别名，再搜索对应订阅源；优先选有规律更新、内容相关、可程序化抓取的来源
 
-**第二步：为每个数据源查询 RSS 路由**
-将所有找到的网站**合并为一次** rssRadar 调用（传入 queries 列表）。rssRadar 几乎没有调用成本，且很多网站都有现成的 RSS 路由。
-- **queries 只传裸域名**（如 bilibili.com、zhihu.com），不要传完整 URL、路径或用户 ID（如 space.bilibili.com/346563107 会匹配不到任何路由）
-- rssRadar 返回匹配路由：templateUrl 包含 :param 占位符，所需参数值（用户 ID、专栏 ID 等）通常已在第一步的搜索结果中获取，直接填入即可；**无需再次搜索**（仅当第三步验证失败时才需补充搜索）
-- rssRadar 无匹配路由：保留原始网页 URL；**严禁自行拼造 RSSHub 路径**（如 /zhihu/search/xxx），只有 rssRadar 返回的 templateUrl 才是真实路由
+2. rssRadar：将所有域名**合并为一次**调用；queries 只传裸域名（如 bilibili.com），不传完整 URL 或用户 ID
+   - 有匹配路由 → 将 \`:param\` 占位符填入已知参数，构造完整 RSS URL
+   - 无匹配路由 → 保留原始网页 URL；禁止自行拼造 RSSHub 路径
 
-**第三步：验证 RSS URL 可用性**
-将所有 RSS URL **合并为一次** checkFeed 调用（传入 feeds 列表，并行验证）。每项传入：
-- \`url\`：填好参数的完整 RSS URL
-- \`templateUrl\`：该 URL 所对应的 rssRadar templateUrl（验证 :param 是否全部替换且路径正确）
-- \`keywords\`：实体的所有已知名称和别名组成的数组（任一命中即验证通过，避免因名称变体导致误判）
+3. checkFeed：将所有 RSS URL **合并为一次**调用，每项传 \`url\`、\`templateUrl\`、\`keywords\`（实体所有已知别名）
+   - \`valid: true\` → 保留
+   - \`templateMismatch: true\` → 修正 URL 结构后重新验证
+   - \`keywordFound: false\` → webSearch 找到正确实体 ID，重新构造后验证
+   - 其他失败 → 同上修复；仍失败则回退为原始网页 URL；原始网页 URL 无需验证
 
-根据每项返回结果处理：
-- \`valid: true\` → 保留
-- \`templateMismatch: true\` → URL 结构有误（:param 未完整替换或路径错误）：修正后重新 checkFeed
-- \`keywordFound: false\` → URL 结构正确但 feed 不含任何关键词（实体 ID 有误）：用 webSearch 搜索实体名称（如"张三 bilibili"）从页面读取正确 ID → 重新填入 templateUrl → 再次 checkFeed
-- 其他失败（HTTP 错误等）→ 同上修复流程；修复仍失败则回退为原始网页 URL
-- 原始网页 URL（非 RSS）无需验证
+**输出（JSON 数组）**
+每项：\`title\`、\`url\`（有效 RSS 优先，否则网页 URL）、\`description\`（内容特点、更新频率、是否含监控指标）、\`recommended\`（质量高/更新频繁/RSS 有效 → true，否则 false）；监控条件不为"无"时加 \`canProvideCriteria\`（能否采集到监控所需指标）
 
-**输出**
-以 JSON 数组格式输出，每项包含：
-- \`title\`：数据源名称
-- \`url\`：经过验证的 URL（有效 RSS 优先，否则为原始页面 URL）
-- \`description\`：内容特点、更新频率及是否含监控指标（RSS 请注明路由名称；回退网页 URL 请注明原因）
-- \`recommended\`：true = 质量高、更新频繁、抓取难度低（有效 RSS 优先标记）；false = 可订阅但质量或可访问性一般或无法满足监控条件
-- \`canProvideCriteria\`（仅当监控条件不为"无"时）：true = 能抓到评估监控条件所需的指标数据；false = 无法获取
-
-综合内容质量、更新频率、抓取难度，将最优质的 2-4 个源标记 recommended: true。`,
+最优质 2-4 个源标记 \`recommended: true\`。`,
     defaultContent: '',
   },
   {
@@ -94,98 +77,72 @@ URL：{{url}}
     id: 'validate-script',
     name: '校验采集脚本',
     description: '对采集脚本和采集结果进行 LLM 质量审查，验证数据真实性，可同时修复发现的问题',
-    content: `你是一个严格的数据采集质量审查员。请对以下采集脚本和其执行结果进行全面质量审查。
+    content: `对以下采集脚本进行质量审查。
 
-数据源 URL：{{url}}
-数据源描述：{{description}}
+数据源：{{url}}
+描述：{{description}}
 监控条件：{{criteria}}
 
-待审查脚本：
+脚本：
 \`\`\`javascript
 {{script}}
 \`\`\`
 
-脚本执行结果（前 5 条）：
+采集结果（前 5 条）：
 \`\`\`json
 {{items}}
 \`\`\`
 
-请按以下两步完成审查：
+**审查步骤**
+1. 代码质量：有无假数据兜底？publishedAt 是否从数据源提取真实时间（数据源有时间信息但未提取视为问题）？fetch URL 是否限于数据源域名？监控条件不为"无"时是否正确实现 \`criteriaResult\`/\`metricValue\`？
+2. 数据真实性：用 webFetch 抓取前 2 条 URL，确认可访问且页面内容与 title 吻合；因网络限制无法访问时结合代码质量综合判断
 
-**第一步：代码质量检查**
-- 是否存在虚假数据兜底（如空结果时强制 push 默认项，或硬编码假 title/URL）？
-- publishedAt 字段：采集结果中是否有真实的发布时间？若数据源包含时间信息（RSS pubDate、页面 <time> 标签、API 日期字段等）但脚本未提取 publishedAt，应判定为质量问题并在 fixedScript 中修复。
-- 域名约束：脚本中所有 fetch 调用的 URL 是否都限制在数据源站点域名范围内？若存在访问第三方无关网站的 fetch，应视为质量问题。
-- 若监控条件不为"无"，是否正确实现了 criteriaResult（'matched'|'not_matched'|'invalid'）和 metricValue 字段？
-
-**第二步：数据真实性验证**
-使用 webFetch 工具抓取采集结果前 2 条 URL，确认：
-- 这些 URL 可以访问（HTTP 200 或重定向后可访问）
-- 页面内容与采集到的 title 大致吻合（允许截断差异）
-- 这些 URL 确实属于该数据源站点范围
-注意：若 URL 因网络限制无法访问，应结合代码质量综合判断，不应仅因网络问题判定失败。
-
-**输出格式（严格遵守）**
-完成审查后输出 JSON 结果块：
+**输出**
 \`\`\`json
 {"valid": true, "reason": "简明说明（30字以内）"}
 \`\`\`
-若 valid=false 且问题可修复，在 JSON 块之后附上修复后的完整脚本：
-\`\`\`javascript
-// 修复后的完整脚本（仅在 valid=false 时提供）
-\`\`\``,
+valid=false 且可修复时，在 JSON 块后附完整修复脚本。`,
     defaultContent: '',
   },
   {
     id: 'repair-script',
     name: '修复采集脚本',
     description: '引导智能体诊断并修复失效的采集脚本',
-    content: `你是一个专业的 JavaScript 调试工程师。以下采集脚本运行失败，请帮助修复：
+    content: `以下采集脚本运行失败，请修复。
 
-数据源 URL：{{url}}
-错误信息：{{lastError}}
-当前脚本：
+URL：{{url}}
+错误：{{lastError}}
+
+脚本：
 \`\`\`javascript
 {{script}}
 \`\`\`
 
-【执行环境 — isolated-vm V8 沙箱（非 Node.js，非浏览器）】
-可用 API：fetch · URL · URLSearchParams · 标准 JS（JSON/Array/RegExp/Promise/Map/Set/Date/Math 等）
-fetch 返回：{ ok, status, statusText, text(), json() } — 无 res.headers；每次运行最多 5 次，单次上限 5 MB
-严禁：require/import · process/fs/Buffer/child_process · DOMParser/document/window · console · setTimeout/setInterval · atob/btoa · TextDecoder/TextEncoder
-HTML 解析：只能用正则或字符串方法，不能用任何 DOM API。
+**沙箱环境（isolated-vm V8，非 Node.js / 非浏览器）**
+可用：\`fetch\`（最多 5 次，无 \`headers\` 属性）、\`URL\`、\`URLSearchParams\`、标准 JS
+禁用：\`require\`/\`import\`、\`process\`/\`fs\`/\`Buffer\`、DOM API、\`console\`、\`setTimeout\`、\`atob\`/\`btoa\`、\`TextDecoder\`/\`TextEncoder\`
+HTML 解析：只能用字符串方法或正则
 
-请：
-1. 使用 webFetch 工具重新获取页面，分析当前页面结构（可能已更新）
-   - 若 HTML 为 SPA 骨架（内容极少），改用 webFetchBrowser 工具，分析 capturedRequests 中的 API 端点，直接调用 API 重写脚本
-2. 结合上述环境约束诊断错误原因
-3. 修复脚本；若页面确实无数据，返回空数组 []，严禁构造虚假兜底条目（如 items.push({ title: '...', url: sourceUrl }) 之类的 fallback）
-4. 使用 validateScript 工具验证修复后的脚本
-5. 最多尝试 3 次，输出最终的修复脚本`,
+**步骤**
+1. webFetch 重新抓取页面，分析当前结构；SPA 骨架则改用 webFetchBrowser，分析 capturedRequests 中的 API 端点
+2. 结合错误信息定位问题并修复；无数据返回 \`[]\`，禁止构造假数据兜底
+3. validateScript 验证，失败则重试（最多 3 次）`,
     defaultContent: '',
   },
   {
     id: 'analyze-subscription',
     name: '分析订阅数据',
     description: '引导智能体对订阅的消息卡片进行综合分析，生成 HTML 报告',
-    content: `你是一个数据分析专家。请对以下订阅主题"{{topic}}"的最近 {{count}} 条内容进行深度分析。
+    content: `对订阅主题"{{topic}}"的 {{count}} 条内容进行分析。
 
-用户的分析需求：{{analysisRequest}}
+分析需求：{{analysisRequest}}
 
-数据如下（JSON 格式，包含 url 字段可用于生成可点击链接）：
+数据（JSON，含 url 字段）：
 {{data}}
 
-请生成一份完整的 HTML 分析报告，包含：
-1. 执行摘要（关键发现）
-2. 内容趋势分析
-3. 值得关注的具体条目（请使用 url 字段生成可点击的 <a> 链接）
-4. 结论与建议
+生成完整 HTML 报告，包含：执行摘要、内容趋势、值得关注的条目（用 \`<a href="url" target="_blank">\` 链接原文）、结论与建议。
 
-报告格式要求：
-- 使用语义化 HTML（h1、h2、p、ul、table、a 等）
-- 内嵌简单的 CSS 样式使报告美观易读
-- 提到的具体内容条目应包含指向原文的链接（<a href="url" target="_blank">标题</a>）
-- 仅输出 HTML 内容，不要包含 \`\`\`html 代码块标记`,
+格式：语义化 HTML + 内嵌 CSS；仅输出 HTML，不要加 \`\`\`html 代码块标记。`,
     defaultContent: '',
   },
 ];
