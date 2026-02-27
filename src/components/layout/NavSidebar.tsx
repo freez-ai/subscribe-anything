@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { BookOpen, Github, Heart, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,7 +27,8 @@ export function NavSidebar({ className }: NavSidebarProps) {
         className
       )}
     >
-      <div className="flex h-16 items-center border-b px-6">
+      <div className="flex h-16 items-center border-b px-6 gap-2.5">
+        <Image src="/android-chrome-192x192.png" alt="logo" width={28} height={28} className="rounded-md" />
         <span className="text-lg font-semibold">订阅万物</span>
       </div>
 
