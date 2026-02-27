@@ -3,12 +3,13 @@
  *
  * No tools. Pure generation from message card data.
  * Yields HTML string chunks via onChunk callback (for SSE streaming).
+ * Reports LLM call info via onCall callback (for debug UI).
  */
 
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { promptTemplates } from '@/lib/db/schema';
-import { getProviderForTemplate, buildOpenAIClient } from '@/lib/ai/client';
+import { getProviderForTemplate, buildOpenAIClient, llmStream, type LLMCallInfo } from '@/lib/ai/client';
 
 export interface AnalyzeInput {
   topic: string;
@@ -23,10 +24,16 @@ export interface AnalyzeInput {
   }>;
 }
 
+export interface AnalyzeAgentCallbacks {
+  onChunk: (html: string) => void;
+  onCall?: (info: LLMCallInfo) => void;
+}
+
 export async function analyzeAgent(
   input: AnalyzeInput,
-  onChunk: (html: string) => void
+  callbacks: AnalyzeAgentCallbacks
 ): Promise<void> {
+  const { onChunk, onCall } = callbacks;
   const provider = getProviderForTemplate('analyze-subscription');
 
   const db = getDb();
@@ -41,33 +48,42 @@ export async function analyzeAgent(
     return;
   }
 
-  // Summarize card data as text (title + summary only, keep tokens low)
-  const cardsSummary = input.cards
-    .map((c, i) => {
-      const date = c.publishedAt ? ` (${c.publishedAt.slice(0, 10)})` : '';
-      const flag = c.meetsCriteriaFlag ? ' ⚠️' : '';
-      const summary = c.summary ? `\n  摘要: ${c.summary.slice(0, 200)}` : '';
-      return `${i + 1}. ${c.title}${date}${flag}${summary}`;
-    })
-    .join('\n');
+  // Format card data as JSON
+  const cardsJson = JSON.stringify(
+    input.cards.map((c, i) => ({
+      index: i + 1,
+      title: c.title,
+      summary: c.summary?.slice(0, 300) || null,
+      publishedAt: c.publishedAt ? c.publishedAt.slice(0, 10) : null,
+      source: c.sourceName || null,
+      meetsCriteria: c.meetsCriteriaFlag || false,
+    })),
+    null,
+    2
+  );
 
+  // Replace all template variables
   const systemContent = tplRow.content
-    .replace('{{topic}}', input.topic)
-    .replace('{{criteria}}', input.criteria ?? '无');
-
-  const userContent = `分析要求：${input.description}\n\n数据共 ${input.cards.length} 条：\n${cardsSummary}\n\n请用 HTML 格式输出分析报告（使用 <h2>, <p>, <ul>, <li>, <strong> 等标签，不要包含 <!DOCTYPE> 或 <html>/<body> 包装）。`;
+    .replace(/\{\{topic\}\}/g, input.topic)
+    .replace(/\{\{criteria\}\}/g, input.criteria ?? '无')
+    .replace(/\{\{count\}\}/g, String(input.cards.length))
+    .replace(/\{\{analysisRequest\}\}/g, input.description)
+    .replace(/\{\{data\}\}/g, cardsJson);
 
   const openai = buildOpenAIClient(provider);
 
-  const stream = await openai.chat.completions.create({
-    model: provider.modelId,
-    messages: [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: userContent },
-    ],
-    stream: true,
-    stream_options: { include_usage: true },
-  });
+  const stream = llmStream(
+    openai,
+    {
+      model: provider.modelId,
+      messages: [
+        { role: 'user', content: systemContent },
+      ],
+      stream: true,
+      stream_options: { include_usage: true },
+    },
+    { callIndex: 1, onCall }
+  );
 
   for await (const chunk of stream) {
     const text = chunk.choices[0]?.delta?.content ?? '';

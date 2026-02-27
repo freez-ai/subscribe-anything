@@ -5,12 +5,14 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, LayoutGrid, AlignJustify, ExternalLink,
-  X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2, Bell, Heart,
+  X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2, Bell, Heart, ScrollText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { formatDistanceToNow } from '@/lib/utils/time';
+import LLMLogDialog from '@/components/debug/LLMLogDialog';
+import type { LLMCallInfo } from '@/lib/ai/client';
 
 /* ── Types ── */
 interface Subscription {
@@ -624,26 +626,46 @@ function TimelineCard({
 }
 
 /* ── Analyze Dialog ── */
+type SelectionMode = 'limit' | 'select';
+
 function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; onClose: () => void }) {
   const [description, setDescription] = useState('');
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('limit');
   const [limit, setLimit] = useState(50);
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [html, setHtml] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState('');
+  const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
+  const [totalTokens, setTotalTokens] = useState(0);
+  const [showLog, setShowLog] = useState(false);
+  const countedCallsRef = useRef(new Set<number>());
   const abortRef = useRef<AbortController | null>(null);
 
   const start = async () => {
     setHtml('');
     setError('');
+    setLlmCalls([]);
+    setTotalTokens(0);
+    countedCallsRef.current.clear();
     setStreaming(true);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+
+    const body: { description?: string; limit?: number; cardIds?: string[] } = {
+      description: description || undefined,
+    };
+    if (selectionMode === 'limit') {
+      body.limit = limit;
+    } else {
+      body.cardIds = Array.from(selectedCardIds);
+    }
 
     try {
       const res = await fetch(`/api/subscriptions/${subscriptionId}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: description || undefined, limit }),
+        body: JSON.stringify(body),
         signal: ctrl.signal,
       });
       if (!res.ok) {
@@ -667,6 +689,26 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
             try {
               const ev = JSON.parse(line.slice(6));
               if (ev.type === 'chunk') setHtml((prev) => prev + ev.html);
+              if (ev.type === 'error') {
+                setError(ev.message || '发生错误');
+                return;
+              }
+              if (ev.type === 'llm_call') {
+                const info = ev as unknown as LLMCallInfo;
+                setLlmCalls((prev) => {
+                  const existingIdx = prev.findIndex((c) => c.callIndex === info.callIndex);
+                  if (existingIdx >= 0) {
+                    const next = [...prev];
+                    next[existingIdx] = info;
+                    return next;
+                  }
+                  return [...prev, info];
+                });
+                if (!info.streaming && info.usage?.total && !countedCallsRef.current.has(info.callIndex)) {
+                  countedCallsRef.current.add(info.callIndex);
+                  setTotalTokens((prev) => prev + info.usage!.total);
+                }
+              }
             } catch { /* ignore */ }
           }
         }
@@ -691,18 +733,22 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
   const reset = () => {
     setHtml('');
     setError('');
+    setLlmCalls([]);
+    setTotalTokens(0);
+    countedCallsRef.current.clear();
   };
 
   useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const isIdle = !streaming && !html && !error;
   const isDone = !streaming && !!html;
+  const canStart = selectionMode === 'limit' || selectedCardIds.size > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-background rounded-xl shadow-xl w-full max-w-md flex flex-col">
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
           <h2 className="font-semibold text-lg">AI 数据分析</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-5 w-5" />
@@ -710,10 +756,10 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
         </div>
 
         {/* Body */}
-        <div className="px-5 py-5">
+        <div className="px-5 py-5 overflow-y-auto flex-1">
           {/* Idle: form */}
           {isIdle && (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
               <div>
                 <label className="text-sm font-medium block mb-1.5">分析要求</label>
                 <textarea
@@ -724,16 +770,58 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </div>
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium">分析数据量</label>
-                <select
-                  className="rounded-md border bg-background px-2 py-1 text-sm"
-                  value={limit}
-                  onChange={(e) => setLimit(Number(e.target.value))}
-                >
-                  {[20, 50, 100].map((n) => <option key={n} value={n}>最近 {n} 条</option>)}
-                </select>
+
+              {/* Selection mode toggle */}
+              <div>
+                <label className="text-sm font-medium block mb-2">数据选择方式</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectionMode('limit')}
+                    className={[
+                      'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors border',
+                      selectionMode === 'limit'
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background border-border hover:bg-muted',
+                    ].join(' ')}
+                  >
+                    按数量
+                  </button>
+                  <button
+                    onClick={() => setSelectionMode('select')}
+                    className={[
+                      'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors border',
+                      selectionMode === 'select'
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background border-border hover:bg-muted',
+                    ].join(' ')}
+                  >
+                    选择卡片
+                  </button>
+                </div>
               </div>
+
+              {/* Limit mode */}
+              {selectionMode === 'limit' && (
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium">分析数据量</label>
+                  <select
+                    className="rounded-md border bg-background px-2 py-1 text-sm"
+                    value={limit}
+                    onChange={(e) => setLimit(Number(e.target.value))}
+                  >
+                    {[20, 50, 100].map((n) => <option key={n} value={n}>最近 {n} 条</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* Select mode */}
+              {selectionMode === 'select' && (
+                <CardSelector
+                  subscriptionId={subscriptionId}
+                  selectedIds={selectedCardIds}
+                  onSelectionChange={setSelectedCardIds}
+                />
+              )}
             </div>
           )}
 
@@ -742,6 +830,16 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
             <div className="flex flex-col items-center gap-3 py-6">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">AI 正在分析数据，请稍候...</p>
+              {/* LLM log button */}
+              {llmCalls.length > 0 && (
+                <button
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowLog(true)}
+                >
+                  <ScrollText className="h-3 w-3" />
+                  查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
+                </button>
+              )}
             </div>
           )}
 
@@ -751,6 +849,16 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
               <CheckCircle2 className="h-10 w-10 text-green-500" />
               <p className="font-medium">分析完成</p>
               <p className="text-sm text-muted-foreground">点击「查看」在新窗口中打开分析报告</p>
+              {/* LLM log button */}
+              {llmCalls.length > 0 && (
+                <button
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowLog(true)}
+                >
+                  <ScrollText className="h-3 w-3" />
+                  查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
+                </button>
+              )}
             </div>
           )}
 
@@ -763,9 +871,9 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
         </div>
 
         {/* Footer */}
-        <div className="px-5 pb-5 flex gap-2 border-t pt-4">
+        <div className="px-5 pb-5 flex gap-2 border-t pt-4 flex-shrink-0">
           {isIdle && (
-            <Button onClick={start} className="gap-2">
+            <Button onClick={start} className="gap-2" disabled={!canStart}>
               <BarChart2 className="h-4 w-4" />
               开始分析
             </Button>
@@ -785,6 +893,154 @@ function AnalyzeDialog({ subscriptionId, onClose }: { subscriptionId: string; on
           <Button variant="ghost" onClick={onClose}>关闭</Button>
         </div>
       </div>
+
+      {/* LLM log dialog */}
+      {showLog && (
+        <LLMLogDialog
+          sourceTitle="数据分析"
+          calls={llmCalls}
+          totalTokens={totalTokens}
+          onClose={() => setShowLog(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Card Selector for Analyze Dialog ── */
+const SELECTOR_PAGE_SIZE = 20;
+
+function CardSelector({
+  subscriptionId,
+  selectedIds,
+  onSelectionChange,
+}: {
+  subscriptionId: string;
+  selectedIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
+}) {
+  const [cards, setCards] = useState<CardItem[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const initialLoadDone = useRef(false);
+
+  const loadMore = useCallback(async (currentOffset: number) => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        limit: String(SELECTOR_PAGE_SIZE),
+        offset: String(currentOffset),
+      });
+      const res = await fetch(`/api/subscriptions/${subscriptionId}/message-cards?${params}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const items: CardItem[] = data.data;
+      // Deduplicate by id
+      setCards((prev) => {
+        const existingIds = new Set(prev.map((c) => c.id));
+        const newItems = items.filter((item) => !existingIds.has(item.id));
+        return [...prev, ...newItems];
+      });
+      setHasMore(items.length === SELECTOR_PAGE_SIZE);
+      setOffset(currentOffset + items.length);
+      // Estimate total count on first load
+      if (currentOffset === 0 && items.length > 0) {
+        // We don't have exact count from API, so estimate based on hasMore
+        setTotalCount(items.length);
+      } else if (items.length > 0) {
+        setTotalCount((prev) => prev + items.length);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [subscriptionId, loading]);
+
+  useEffect(() => {
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      loadMore(0);
+    }
+  }, [loadMore]);
+
+  const toggleCard = (cardId: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(cardId)) {
+      next.delete(cardId);
+    } else if (next.size < 100) {
+      next.add(cardId);
+    }
+    onSelectionChange(next);
+  };
+
+  const isSelected = (cardId: string) => selectedIds.has(cardId);
+  const selectedCount = selectedIds.size;
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      {/* Header with count */}
+      <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b">
+        <span className="text-xs text-muted-foreground">
+          已选择 <span className="font-medium text-foreground">{selectedCount}</span>/100 条
+        </span>
+        {selectedCount > 0 && (
+          <button
+            onClick={() => onSelectionChange(new Set())}
+            className="text-xs text-primary hover:underline"
+          >
+            清空选择
+          </button>
+        )}
+      </div>
+
+      {/* Card list */}
+      <div className="max-h-[240px] overflow-y-auto">
+        {cards.length === 0 && !loading ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            暂无消息卡片
+          </div>
+        ) : (
+          <div className="divide-y">
+            {cards.map((card) => (
+              <label
+                key={card.id}
+                className="flex gap-2 px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected(card.id)}
+                  onChange={() => toggleCard(card.id)}
+                  disabled={!isSelected(card.id) && selectedCount >= 100}
+                  className="mt-0.5 h-4 w-4 rounded border-border accent-primary flex-shrink-0 cursor-pointer disabled:cursor-default"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs leading-snug line-clamp-2">{card.title}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {card.sourceTitle} · {formatDistanceToNow(card.publishedAt ?? card.createdAt)}
+                  </p>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+        {loading && (
+          <div className="flex justify-center py-3">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
+      </div>
+
+      {/* Load more button */}
+      {hasMore && !loading && (
+        <button
+          onClick={() => loadMore(offset)}
+          className="w-full py-2 text-xs text-primary hover:bg-muted/30 transition-colors border-t"
+        >
+          加载更多
+        </button>
+      )}
     </div>
   );
 }
