@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, Settings } from 'lucide-react';
+import { BookOpen, Heart, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BottomNavProps {
@@ -14,6 +14,7 @@ export function BottomNav({ className }: BottomNavProps) {
 
   const navItems = [
     { href: '/subscriptions', label: '订阅', icon: BookOpen },
+    { href: '/favorites', label: '收藏', icon: Heart },
     { href: '/settings', label: '配置', icon: Settings },
   ];
 

@@ -1,6 +1,6 @@
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { messageCards, sources } from '@/lib/db/schema';
+import { messageCards, sources, favorites } from '@/lib/db/schema';
 
 // GET /api/subscriptions/[id]/message-cards?offset=0&limit=50&sourceId=xxx
 // Returns message cards for a subscription (newest first), with source title.
@@ -48,6 +48,25 @@ export async function GET(
       .limit(limit)
       .offset(offset)
       .all();
+
+    // Check favorite status for each card (only active favorites)
+    if (rows.length > 0) {
+      const cardIds = rows.map((r) => r.id);
+      const favoritedIds = db
+        .select({ originalCardId: favorites.originalCardId })
+        .from(favorites)
+        .where(and(
+          inArray(favorites.originalCardId, cardIds),
+          eq(favorites.isFavorite, true)
+        ))
+        .all()
+        .map((f) => f.originalCardId);
+
+      const favoritedSet = new Set(favoritedIds);
+      rows.forEach((row) => {
+        (row as Record<string, unknown>).isFavorite = favoritedSet.has(row.id);
+      });
+    }
 
     return Response.json({ data: rows, offset, limit });
   } catch (err) {

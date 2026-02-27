@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 const pageTitles: Record<string, string> = {
   '/subscriptions': '我的订阅',
   '/subscriptions/new': '新建订阅',
+  '/favorites': '我的收藏',
   '/messages': '消息中心',
   '/messages/read': '已读历史',
   '/settings': '配置',
@@ -20,7 +21,7 @@ function getTitle(pathname: string): string {
 }
 
 function showBack(pathname: string): boolean {
-  return pathname !== '/subscriptions' && pathname !== '/messages' && pathname !== '/settings';
+  return pathname !== '/subscriptions' && pathname !== '/favorites' && pathname !== '/messages' && pathname !== '/settings';
 }
 
 interface AppBarProps {

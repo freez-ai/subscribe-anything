@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, LayoutGrid, AlignJustify, ExternalLink,
-  X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2, Bell,
+  X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2, Bell, Heart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,7 @@ interface CardItem {
   criteriaResult?: 'matched' | 'not_matched' | 'invalid';
   metricValue?: string | null;
   readAt: string | null; createdAt: string; publishedAt: string | null;
+  isFavorite?: boolean;
 }
 interface Notification {
   id: string; type: string; title: string; body: string | null; isRead: boolean;
@@ -196,6 +197,19 @@ export default function SubscriptionDetailPage() {
     setSub((prev) => prev ? { ...prev, unreadCount: 0 } : prev);
   };
 
+  const handleToggleFavorite = useCallback(async (cardId: string) => {
+    try {
+      const res = await fetch(`/api/message-cards/${cardId}/favorite`, { method: 'POST' });
+      if (!res.ok) return;
+      const { isFavorite } = await res.json();
+      setCards((prev) => prev.map((c) =>
+        c.id === cardId ? { ...c, isFavorite } : c
+      ));
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+    }
+  }, []);
+
   if (!sub) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -355,7 +369,12 @@ export default function SubscriptionDetailPage() {
           {/* Mobile: always timeline */}
           <div className="flex flex-col gap-2 md:hidden">
             {cards.map((card) => (
-              <TimelineCard key={card.id} card={card} onClick={() => handleCardClick(card)} />
+              <TimelineCard
+                key={card.id}
+                card={card}
+                onClick={() => handleCardClick(card)}
+                onToggleFavorite={() => handleToggleFavorite(card.id)}
+              />
             ))}
           </div>
           {/* Desktop: respect layout state */}
@@ -366,7 +385,12 @@ export default function SubscriptionDetailPage() {
                   {cards
                     .filter((_, i) => i % 3 === colIdx)
                     .map((card) => (
-                      <MasonryCard key={card.id} card={card} onClick={() => handleCardClick(card)} />
+                      <MasonryCard
+                        key={card.id}
+                        card={card}
+                        onClick={() => handleCardClick(card)}
+                        onToggleFavorite={() => handleToggleFavorite(card.id)}
+                      />
                     ))}
                 </div>
               ))}
@@ -374,7 +398,12 @@ export default function SubscriptionDetailPage() {
           ) : (
             <div className="hidden md:flex flex-col gap-2">
               {cards.map((card) => (
-                <TimelineCard key={card.id} card={card} onClick={() => handleCardClick(card)} />
+                <TimelineCard
+                  key={card.id}
+                  card={card}
+                  onClick={() => handleCardClick(card)}
+                  onToggleFavorite={() => handleToggleFavorite(card.id)}
+                />
               ))}
             </div>
           )}
@@ -457,13 +486,40 @@ function CriteriaResultBadge({
 }
 
 /* ── Masonry Card ── */
-function MasonryCard({ card, onClick }: { card: CardItem; onClick: () => void }) {
+function MasonryCard({
+  card,
+  onClick,
+  onToggleFavorite,
+}: {
+  card: CardItem;
+  onClick: () => void;
+  onToggleFavorite: () => void;
+}) {
   const isUnread = !card.readAt;
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleFavorite();
+  };
+
   return (
     <button onClick={onClick} className={[
-      'w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60',
+      'w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60 relative',
       isUnread ? 'border-primary/40' : 'border-border',
     ].join(' ')}>
+      {/* Favorite button */}
+      <button
+        onClick={handleFavoriteClick}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-background/80 hover:bg-background transition-colors"
+      >
+        <Heart
+          className={[
+            'h-4 w-4 transition-colors',
+            card.isFavorite ? 'text-red-500 fill-red-500' : 'text-muted-foreground hover:text-red-500',
+          ].join(' ')}
+        />
+      </button>
       {card.thumbnailUrl && (
         <img
           src={card.thumbnailUrl}
@@ -497,18 +553,45 @@ function MasonryCard({ card, onClick }: { card: CardItem; onClick: () => void })
 }
 
 /* ── Timeline Card ── */
-function TimelineCard({ card, onClick }: { card: CardItem; onClick: () => void }) {
+function TimelineCard({
+  card,
+  onClick,
+  onToggleFavorite,
+}: {
+  card: CardItem;
+  onClick: () => void;
+  onToggleFavorite: () => void;
+}) {
   const isUnread = !card.readAt;
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleFavorite();
+  };
+
   return (
     <button onClick={onClick} className={[
-      'w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start bg-card hover:bg-accent/60',
+      'w-full text-left rounded-lg border p-3 transition-colors flex gap-3 items-start bg-card hover:bg-accent/60 relative',
       isUnread ? 'border-primary/40' : 'border-border',
     ].join(' ')}>
+      {/* Favorite button */}
+      <button
+        onClick={handleFavoriteClick}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-background/80 hover:bg-background transition-colors"
+      >
+        <Heart
+          className={[
+            'h-4 w-4 transition-colors',
+            card.isFavorite ? 'text-red-500 fill-red-500' : 'text-muted-foreground hover:text-red-500',
+          ].join(' ')}
+        />
+      </button>
       {card.thumbnailUrl && (
         <img src={card.thumbnailUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0"
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       )}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pr-8">
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="text-[11px] text-muted-foreground truncate">{card.sourceTitle}</span>
         </div>

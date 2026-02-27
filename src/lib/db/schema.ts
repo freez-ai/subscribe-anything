@@ -93,6 +93,34 @@ export const sources = sqliteTable('sources', {
     .notNull(),
 });
 
+// ─── favorites ───────────────────────────────────────────────────────────────
+// Independent table storing copies of favorited cards
+export const favorites = sqliteTable('favorites', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  // Original card reference (may be null if original card deleted)
+  originalCardId: text('original_card_id'),
+  // Copied card data
+  title: text('title').notNull(),
+  summary: text('summary'),
+  thumbnailUrl: text('thumbnail_url'),
+  sourceUrl: text('source_url').notNull(),
+  publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
+  meetsCriteriaFlag: integer('meets_criteria_flag', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  criteriaResult: text('criteria_result').$type<'matched' | 'not_matched' | 'invalid'>(),
+  metricValue: text('metric_value'),
+  // Source info snapshot
+  subscriptionTopic: text('subscription_topic'),
+  sourceTitle: text('source_title'),
+  // Favorite metadata
+  favoriteAt: integer('favorite_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  // Soft-delete flag: false means unfavorited (hidden but kept for undo)
+  isFavorite: integer('is_favorite', { mode: 'boolean' }).notNull().default(true),
+});
+
 // ─── message_cards ───────────────────────────────────────────────────────────
 export const messageCards = sqliteTable('message_cards', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
