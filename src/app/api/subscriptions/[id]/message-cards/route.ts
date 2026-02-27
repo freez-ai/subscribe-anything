@@ -1,6 +1,7 @@
 import { eq, desc, and, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { messageCards, sources, favorites } from '@/lib/db/schema';
+import { messageCards, sources, favorites, subscriptions } from '@/lib/db/schema';
+import { requireAuth } from '@/lib/auth';
 
 // GET /api/subscriptions/[id]/message-cards?offset=0&limit=50&sourceId=xxx
 // Returns message cards for a subscription (newest first), with source title.
@@ -11,6 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const url = new URL(req.url);
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') ?? '50', 10)));
@@ -18,6 +20,15 @@ export async function GET(
     const sourceId = url.searchParams.get('sourceId') ?? undefined;
 
     const db = getDb();
+
+    // Verify subscription belongs to user
+    const sub = db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, id), eq(subscriptions.userId, session.userId)))
+      .get();
+    if (!sub) {
+      return Response.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const rows = db
       .select({
@@ -57,6 +68,7 @@ export async function GET(
         .from(favorites)
         .where(and(
           inArray(favorites.originalCardId, cardIds),
+          eq(favorites.userId, session.userId),
           eq(favorites.isFavorite, true)
         ))
         .all()
@@ -70,6 +82,9 @@ export async function GET(
 
     return Response.json({ data: rows, offset, limit });
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[subscriptions/[id]/message-cards GET]', err);
     return Response.json({ error: 'Failed to load message cards' }, { status: 500 });
   }

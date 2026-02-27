@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BookOpen, Github, Heart, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { UserMenu } from './UserMenu';
 
 interface NavSidebarProps {
   className?: string;
@@ -50,7 +51,8 @@ export function NavSidebar({ className }: NavSidebarProps) {
         </ul>
       </nav>
 
-      <div className="border-t p-3">
+      <div className="border-t p-3 space-y-1">
+        <UserMenu />
         <a
           href="https://github.com/freez-ai/subscribe-anything"
           target="_blank"

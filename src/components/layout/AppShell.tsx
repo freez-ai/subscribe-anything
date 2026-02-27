@@ -1,10 +1,30 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { NavSidebar } from './NavSidebar';
 import { BottomNav } from './BottomNav';
 import { AppBar } from './AppBar';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { loading } = useAuth();
+  const pathname = usePathname();
+
+  // Don't show app shell on login page or while loading auth
+  const isLoginPage = pathname === '/login';
+
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">加载中...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Desktop sidebar */}

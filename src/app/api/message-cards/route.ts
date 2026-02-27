@@ -1,11 +1,13 @@
 import { eq, desc, isNull, isNotNull, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { messageCards, sources, subscriptions } from '@/lib/db/schema';
+import { requireAuth } from '@/lib/auth';
 
 // GET /api/message-cards?status=unread|read|all&subscriptionId=&limit=&offset=
 // Returns message cards with source title and subscription topic joined
 export async function GET(req: Request) {
   try {
+    const session = await requireAuth();
     const url = new URL(req.url);
     const status = url.searchParams.get('status') ?? 'unread';
     const subscriptionId = url.searchParams.get('subscriptionId');
@@ -14,7 +16,7 @@ export async function GET(req: Request) {
 
     const db = getDb();
 
-    const conditions = [];
+    const conditions = [eq(subscriptions.userId, session.userId)];
     if (status === 'unread') conditions.push(isNull(messageCards.readAt));
     if (status === 'read') conditions.push(isNotNull(messageCards.readAt));
     if (subscriptionId) conditions.push(eq(messageCards.subscriptionId, subscriptionId));
@@ -42,7 +44,7 @@ export async function GET(req: Request) {
       .from(messageCards)
       .innerJoin(sources, eq(messageCards.sourceId, sources.id))
       .innerJoin(subscriptions, eq(messageCards.subscriptionId, subscriptions.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(orderCol)
       .limit(limit)
       .offset(offset)
@@ -50,6 +52,9 @@ export async function GET(req: Request) {
 
     return Response.json({ data: rows, offset, limit });
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[message-cards GET]', err);
     return Response.json({ error: 'Failed to load message cards' }, { status: 500 });
   }

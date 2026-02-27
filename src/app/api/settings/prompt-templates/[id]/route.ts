@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { promptTemplates } from '@/lib/db/schema';
+import { requireAuth } from '@/lib/auth';
 
 // PATCH /api/settings/prompt-templates/[id] — update template content
 export async function PATCH(
@@ -8,13 +9,15 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
 
+    // Verify template belongs to user
     const existing = db
       .select()
       .from(promptTemplates)
-      .where(eq(promptTemplates.id, id))
+      .where(and(eq(promptTemplates.id, id), eq(promptTemplates.userId, session.userId)))
       .get();
     if (!existing) {
       return Response.json({ error: 'Template not found' }, { status: 404 });
@@ -45,6 +48,9 @@ export async function PATCH(
 
     return Response.json(updated);
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[prompt-templates/[id] PATCH]', err);
     return Response.json({ error: 'Failed to update template' }, { status: 500 });
   }

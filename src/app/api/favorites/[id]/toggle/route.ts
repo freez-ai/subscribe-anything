@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { favorites } from '@/lib/db/schema';
+import { requireAuth } from '@/lib/auth';
 
 // POST /api/favorites/[id]/toggle — toggle favorite status by favorite ID
 // This endpoint is used by the favorites page where the original card may no longer exist
@@ -11,14 +12,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
 
-    // Find the favorite by its own ID
+    // Find the favorite by its own ID and verify ownership
     const existingFavorite = db
       .select()
       .from(favorites)
-      .where(eq(favorites.id, id))
+      .where(and(eq(favorites.id, id), eq(favorites.userId, session.userId)))
       .get();
 
     if (existingFavorite) {
@@ -31,9 +33,12 @@ export async function POST(
       return Response.json({ ok: true, isFavorite: newIsFavorite });
     }
 
-    // Not currently in favorites table
+    // Not currently in favorites table or doesn't belong to user
     return Response.json({ error: 'Favorite not found' }, { status: 404 });
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[favorites/[id]/toggle POST]', err);
     return Response.json({ error: 'Failed to toggle favorite' }, { status: 500 });
   }

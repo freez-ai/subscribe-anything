@@ -1,7 +1,18 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { sources } from '@/lib/db/schema';
+import { sources, subscriptions } from '@/lib/db/schema';
 import { validateCron } from '@/lib/utils/cron';
+import { requireAuth } from '@/lib/auth';
+
+// Helper to verify source belongs to user
+async function verifySourceOwnership(db: ReturnType<typeof getDb>, sourceId: string, userId: string) {
+  const source = db.select()
+    .from(sources)
+    .innerJoin(subscriptions, eq(sources.subscriptionId, subscriptions.id))
+    .where(and(eq(sources.id, sourceId), eq(subscriptions.userId, userId)))
+    .get();
+  return source;
+}
 
 // GET /api/sources/[id]
 export async function GET(
@@ -9,12 +20,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
-    const row = db.select().from(sources).where(eq(sources.id, id)).get();
-    if (!row) return Response.json({ error: 'Not found' }, { status: 404 });
-    return Response.json(row);
+    const result = await verifySourceOwnership(db, id, session.userId);
+    if (!result) return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json(result.sources);
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[sources/[id] GET]', err);
     return Response.json({ error: 'Failed to load source' }, { status: 500 });
   }
@@ -26,11 +41,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.select().from(sources).where(eq(sources.id, id)).get();
-    if (!existing) return Response.json({ error: 'Not found' }, { status: 404 });
+    const result = await verifySourceOwnership(db, id, session.userId);
+    if (!result) return Response.json({ error: 'Not found' }, { status: 404 });
 
     const body = await req.json();
     const patch: Record<string, unknown> = { updatedAt: new Date() };
@@ -68,6 +84,9 @@ export async function PATCH(
     const updated = db.select().from(sources).where(eq(sources.id, id)).get();
     return Response.json(updated);
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[sources/[id] PATCH]', err);
     return Response.json({ error: 'Failed to update source' }, { status: 500 });
   }
@@ -79,11 +98,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.select().from(sources).where(eq(sources.id, id)).get();
-    if (!existing) return Response.json({ error: 'Not found' }, { status: 404 });
+    const result = await verifySourceOwnership(db, id, session.userId);
+    if (!result) return Response.json({ error: 'Not found' }, { status: 404 });
 
     try {
       const { jobManager } = await import('@/lib/scheduler/jobManager');
@@ -95,6 +115,9 @@ export async function DELETE(
     db.delete(sources).where(eq(sources.id, id)).run();
     return new Response(null, { status: 204 });
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[sources/[id] DELETE]', err);
     return Response.json({ error: 'Failed to delete source' }, { status: 500 });
   }

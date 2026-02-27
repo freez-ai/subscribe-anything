@@ -374,9 +374,9 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange
           ) : (
             <div className="flex items-center gap-1.5 min-w-0">
               <p className="text-sm font-medium truncate flex-1 min-w-0">{src.title}</p>
-              <button onClick={startEdit} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="编辑名称">
+              <div onClick={startEdit} className="text-muted-foreground hover:text-foreground flex-shrink-0 cursor-pointer" title="编辑名称">
                 <Pencil className="h-3 w-3" />
-              </button>
+              </div>
             </div>
           )}
           <div className="flex items-center gap-2 mt-0.5">

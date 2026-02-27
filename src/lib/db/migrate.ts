@@ -311,6 +311,15 @@ export async function runMigrations() {
     )`);
   } catch { /* already exists */ }
 
+  // === Multi-tenant user system migration ===
+  migrateUserSystem(sqlite);
+
+  // === Email verification system migration ===
+  migrateEmailVerification(sqlite);
+
+  // === Google OAuth config migration ===
+  migrateOAuthConfig(sqlite);
+
   // Seed default prompt templates (idempotent)
   seedPromptTemplates(db);
 
@@ -517,4 +526,132 @@ function seedRssInstance(sqlite: InstanceType<typeof Database>) {
        VALUES (?, ?, ?, 1, ?, ?)`
     )
     .run(id, 'RssHub', 'https://rsshub.app', now, now);
+}
+
+function migrateOAuthConfig(sqlite: InstanceType<typeof Database>) {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS oauth_config (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL DEFAULT '',
+      client_secret TEXT NOT NULL DEFAULT '',
+      enabled INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+  console.log('[DB] OAuth config migration complete');
+}
+export const GUEST_USER_ID = 'guest-user';
+
+function migrateUserSystem(sqlite: InstanceType<typeof Database>) {
+  const now = Date.now();
+
+  // 1. Create users table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE,
+      password_hash TEXT,
+      name TEXT,
+      avatar_url TEXT,
+      google_id TEXT UNIQUE,
+      is_admin INTEGER NOT NULL DEFAULT 0,
+      is_guest INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  // 2. Create sessions table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  // 3. Create oauth_states table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS oauth_states (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      state TEXT NOT NULL,
+      redirect_url TEXT,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )
+  `);
+
+  // 4. Add userId columns to user-level tables (nullable first, then we'll backfill)
+  try { sqlite.exec('ALTER TABLE subscriptions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE favorites ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE prompt_templates ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE'); } catch { /* already exists */ }
+
+  // 5. Add createdBy columns to global config tables
+  try { sqlite.exec('ALTER TABLE llm_providers ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE search_provider_config ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE rss_instances ADD COLUMN created_by TEXT REFERENCES users(id) ON DELETE SET NULL'); } catch { /* already exists */ }
+
+  // 6. Create indexes
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id)`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id)`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_prompt_templates_user ON prompt_templates(user_id)`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`);
+
+  // 7. Create/ensure guest user exists
+  sqlite
+    .prepare(
+      `INSERT OR IGNORE INTO users (id, is_guest, is_admin, created_at, updated_at)
+       VALUES (?, 1, 0, ?, ?)`
+    )
+    .run(GUEST_USER_ID, now, now);
+
+  // 8. Migrate existing data to guest user (only if not already migrated)
+  sqlite.prepare(`UPDATE subscriptions SET user_id = ? WHERE user_id IS NULL`).run(GUEST_USER_ID);
+  sqlite.prepare(`UPDATE favorites SET user_id = ? WHERE user_id IS NULL`).run(GUEST_USER_ID);
+  // prompt_templates: existing templates become guest user's templates
+  sqlite.prepare(`UPDATE prompt_templates SET user_id = ? WHERE user_id IS NULL`).run(GUEST_USER_ID);
+
+  console.log('[DB] User system migration complete');
+}
+
+function migrateEmailVerification(sqlite: InstanceType<typeof Database>) {
+  // Create email_verification_codes table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS email_verification_codes (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'register',
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  // Create index for faster lookups
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_email_verification_codes_email_type ON email_verification_codes(email, type)`);
+
+  // Create smtp_config table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS smtp_config (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      host TEXT NOT NULL,
+      port INTEGER NOT NULL DEFAULT 465,
+      secure INTEGER NOT NULL DEFAULT 1,
+      user TEXT NOT NULL,
+      password TEXT NOT NULL,
+      from_email TEXT,
+      from_name TEXT DEFAULT 'Subscribe Anything',
+      require_verification INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  // Idempotent column addition for existing databases
+  try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN require_verification INTEGER NOT NULL DEFAULT 1'); } catch { /* already exists */ }
+
+  console.log('[DB] Email verification system migration complete');
 }

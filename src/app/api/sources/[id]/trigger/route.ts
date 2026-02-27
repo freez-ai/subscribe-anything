@@ -1,7 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { sources } from '@/lib/db/schema';
+import { sources, subscriptions } from '@/lib/db/schema';
 import { collect } from '@/lib/scheduler/collector';
+import { requireAuth } from '@/lib/auth';
 
 // POST /api/sources/[id]/trigger
 // Manually trigger a collection run for a source.
@@ -11,19 +12,29 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
 
-    const source = db.select().from(sources).where(eq(sources.id, id)).get();
-    if (!source) {
+    // Verify source belongs to user via subscription
+    const result = db.select()
+      .from(sources)
+      .innerJoin(subscriptions, eq(sources.subscriptionId, subscriptions.id))
+      .where(and(eq(sources.id, id), eq(subscriptions.userId, session.userId)))
+      .get();
+
+    if (!result) {
       return Response.json({ error: 'Source not found' }, { status: 404 });
     }
 
     // Run directly — does NOT go through p-limit
-    const result = await collect(id);
+    const collectResult = await collect(id);
 
-    return Response.json(result);
+    return Response.json(collectResult);
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[sources/[id]/trigger POST]', err);
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: message }, { status: 500 });

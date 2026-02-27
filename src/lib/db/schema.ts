@@ -2,6 +2,48 @@ import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 
+// ─── users ───────────────────────────────────────────────────────────────────
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  email: text('email').unique(),
+  passwordHash: text('password_hash'),
+  name: text('name'),
+  avatarUrl: text('avatar_url'),
+  googleId: text('google_id').unique(),
+  isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
+  isGuest: integer('is_guest', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+// ─── sessions ────────────────────────────────────────────────────────────────
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+// ─── oauth_states ────────────────────────────────────────────────────────────
+export const oauthStates = sqliteTable('oauth_states', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  provider: text('provider', { enum: ['google'] }).notNull(),
+  state: text('state').notNull(),
+  redirectUrl: text('redirect_url'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 // ─── llm_providers ───────────────────────────────────────────────────────────
 export const llmProviders = sqliteTable('llm_providers', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
@@ -12,6 +54,7 @@ export const llmProviders = sqliteTable('llm_providers', {
   headers: text('headers'), // JSON string, optional extra headers
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
   totalTokensUsed: integer('total_tokens_used').notNull().default(0),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),
@@ -22,13 +65,15 @@ export const llmProviders = sqliteTable('llm_providers', {
 
 // ─── prompt_templates ────────────────────────────────────────────────────────
 export const promptTemplates = sqliteTable('prompt_templates', {
-  id: text('id').primaryKey(), // e.g. 'find-sources'
+  id: text('id').primaryKey(), // e.g. 'userId-find-sources'
   name: text('name').notNull(),
   description: text('description').notNull(),
   content: text('content').notNull(),
   defaultContent: text('default_content').notNull(),
   // Optional: pin this template to a specific provider; null = use default active provider
   providerId: text('provider_id').references(() => llmProviders.id, { onDelete: 'set null' }),
+  // User-specific templates; null for system defaults (migration only)
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),
@@ -41,6 +86,7 @@ export const searchProviderConfig = sqliteTable('search_provider_config', {
     .notNull()
     .default('none'),
   apiKey: text('api_key').notNull().default(''),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),
@@ -49,6 +95,9 @@ export const searchProviderConfig = sqliteTable('search_provider_config', {
 // ─── subscriptions ───────────────────────────────────────────────────────────
 export const subscriptions = sqliteTable('subscriptions', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   topic: text('topic').notNull(),
   criteria: text('criteria'), // optional monitoring criteria
   isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
@@ -97,6 +146,9 @@ export const sources = sqliteTable('sources', {
 // Independent table storing copies of favorited cards
 export const favorites = sqliteTable('favorites', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   // Original card reference (may be null if original card deleted)
   originalCardId: text('original_card_id'),
   // Copied card data
@@ -173,6 +225,7 @@ export const rssInstances = sqliteTable('rss_instances', {
   name: text('name').notNull(),
   baseUrl: text('base_url').notNull(),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),
@@ -181,8 +234,30 @@ export const rssInstances = sqliteTable('rss_instances', {
     .notNull(),
 });
 
+// ─── oauth_config ─────────────────────────────────────────────────────────────
+export const oauthConfig = sqliteTable('oauth_config', {
+  id: text('id').primaryKey().default('google'), // one row per provider
+  clientId: text('client_id').notNull().default(''),
+  clientSecret: text('client_secret').notNull().default(''),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
 // ─── Relations ───────────────────────────────────────────────────────────────
-export const subscriptionsRelations = relations(subscriptions, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  subscriptions: many(subscriptions),
+  favorites: many(favorites),
+  promptTemplates: many(promptTemplates),
+  sessions: many(sessions),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [subscriptions.userId],
+    references: [users.id],
+  }),
   sources: many(sources),
   messageCards: many(messageCards),
   notifications: many(notifications),
@@ -213,3 +288,71 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
     references: [subscriptions.id],
   }),
 }));
+
+export const favoritesRelations = relations(favorites, ({ one }) => ({
+  user: one(users, {
+    fields: [favorites.userId],
+    references: [users.id],
+  }),
+}));
+
+export const promptTemplatesRelations = relations(promptTemplates, ({ one }) => ({
+  user: one(users, {
+    fields: [promptTemplates.userId],
+    references: [users.id],
+  }),
+  provider: one(llmProviders, {
+    fields: [promptTemplates.providerId],
+    references: [llmProviders.id],
+  }),
+}));
+
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const llmProvidersRelations = relations(llmProviders, ({ one }) => ({
+  creator: one(users, {
+    fields: [llmProviders.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const rssInstancesRelations = relations(rssInstances, ({ one }) => ({
+  creator: one(users, {
+    fields: [rssInstances.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// ─── email_verification_codes ────────────────────────────────────────────────
+export const emailVerificationCodes = sqliteTable('email_verification_codes', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  email: text('email').notNull(),
+  code: text('code').notNull(), // 6位数字验证码
+  type: text('type', { enum: ['register'] }).notNull().default('register'),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  usedAt: integer('used_at', { mode: 'timestamp_ms' }), // null = 未使用
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+// ─── smtp_config ─────────────────────────────────────────────────────────────
+export const smtpConfig = sqliteTable('smtp_config', {
+  id: text('id').primaryKey().default('default'),
+  host: text('host').notNull(), // SMTP 服务器地址
+  port: integer('port').notNull().default(465),
+  secure: integer('secure', { mode: 'boolean' }).notNull().default(true), // SSL/TLS
+  user: text('user').notNull(), // SMTP 用户名
+  password: text('password').notNull(), // SMTP 密码/授权码
+  fromEmail: text('from_email'), // 发件人地址
+  fromName: text('from_name').default('Subscribe Anything'),
+  requireVerification: integer('require_verification', { mode: 'boolean' }).notNull().default(true), // 注册是否需要邮箱验证码
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});

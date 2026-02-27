@@ -1,9 +1,23 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { llmProviders } from '@/lib/db/schema';
+import { requireAdmin } from '@/lib/auth';
 
 function maskApiKey<T extends { apiKey?: string | null }>(row: T): T {
   return { ...row, apiKey: '' };
+}
+
+// Helper to handle auth errors
+function handleAuthError(err: unknown): Response | null {
+  if (err instanceof Error) {
+    if (err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (err.message === 'FORBIDDEN') {
+      return Response.json({ error: 'Admin access required' }, { status: 403 });
+    }
+  }
+  return null;
 }
 
 // GET /api/settings/llm-providers/[id] — get single provider (apiKey masked)
@@ -12,6 +26,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin();
     const { id } = await params;
     const db = getDb();
     const row = db
@@ -25,6 +40,8 @@ export async function GET(
     }
     return Response.json(maskApiKey(row));
   } catch (err) {
+    const authError = handleAuthError(err);
+    if (authError) return authError;
     console.error('[llm-providers/[id] GET]', err);
     return Response.json({ error: 'Failed to load provider' }, { status: 500 });
   }
@@ -36,6 +53,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin();
     const { id } = await params;
     const db = getDb();
 
@@ -73,6 +91,8 @@ export async function PATCH(
 
     return Response.json(maskApiKey(updated!));
   } catch (err) {
+    const authError = handleAuthError(err);
+    if (authError) return authError;
     console.error('[llm-providers/[id] PATCH]', err);
     return Response.json({ error: 'Failed to update provider' }, { status: 500 });
   }
@@ -84,6 +104,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin();
     const { id } = await params;
     const db = getDb();
 
@@ -99,8 +120,9 @@ export async function DELETE(
     db.delete(llmProviders).where(eq(llmProviders.id, id)).run();
     return new Response(null, { status: 204 });
   } catch (err) {
+    const authError = handleAuthError(err);
+    if (authError) return authError;
     console.error('[llm-providers/[id] DELETE]', err);
     return Response.json({ error: 'Failed to delete provider' }, { status: 500 });
   }
 }
-

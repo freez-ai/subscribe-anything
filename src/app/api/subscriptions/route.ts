@@ -3,18 +3,24 @@ import { getDb } from '@/lib/db';
 import { subscriptions, sources, messageCards, notifications } from '@/lib/db/schema';
 import { hash } from '@/lib/utils/hash';
 import type { CollectedItem } from '@/lib/sandbox/contract';
+import { requireAuth } from '@/lib/auth';
 
 // GET /api/subscriptions — list all subscriptions ordered by createdAt DESC
 export async function GET() {
   try {
+    const session = await requireAuth();
     const db = getDb();
     const rows = db
       .select()
       .from(subscriptions)
+      .where(eq(subscriptions.userId, session.userId))
       .orderBy(desc(subscriptions.createdAt))
       .all();
     return Response.json(rows);
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[subscriptions GET]', err);
     return Response.json({ error: 'Failed to load subscriptions' }, { status: 500 });
   }
@@ -36,6 +42,7 @@ interface SourceInput {
 //   Wizard:  { topic, criteria, sources: SourceInput[] }    → creates subscription + sources + initial message cards
 export async function POST(req: Request) {
   try {
+    const session = await requireAuth();
     const body = await req.json();
     const { topic, criteria, sources: sourcesInput } = body as {
       topic?: string;
@@ -54,6 +61,7 @@ export async function POST(req: Request) {
     const subscription = db
       .insert(subscriptions)
       .values({
+        userId: session.userId,
         topic: topic.trim(),
         criteria: criteria?.trim() || null,
         isEnabled: true,
@@ -189,6 +197,9 @@ export async function POST(req: Request) {
 
     return Response.json(final, { status: 201 });
   } catch (err) {
+    if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('[subscriptions POST]', err);
     return Response.json({ error: 'Failed to create subscription' }, { status: 500 });
   }

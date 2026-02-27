@@ -1,6 +1,15 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { subscriptions, sources } from '@/lib/db/schema';
+import { requireAuth } from '@/lib/auth';
+
+// Helper to handle auth errors
+function handleAuthError(err: unknown): Response | null {
+  if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return null;
+}
 
 // GET /api/subscriptions/[id]
 export async function GET(
@@ -8,12 +17,18 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
-    const row = db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
+    const row = db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, id), eq(subscriptions.userId, session.userId)))
+      .get();
     if (!row) return Response.json({ error: 'Not found' }, { status: 404 });
     return Response.json(row);
   } catch (err) {
+    const authError = handleAuthError(err);
+    if (authError) return authError;
     console.error('[subscriptions/[id] GET]', err);
     return Response.json({ error: 'Failed to load subscription' }, { status: 500 });
   }
@@ -25,10 +40,14 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
+    const existing = db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, id), eq(subscriptions.userId, session.userId)))
+      .get();
     if (!existing) return Response.json({ error: 'Not found' }, { status: 404 });
 
     const body = await req.json();
@@ -70,6 +89,8 @@ export async function PATCH(
     const updated = db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
     return Response.json(updated);
   } catch (err) {
+    const authError = handleAuthError(err);
+    if (authError) return authError;
     console.error('[subscriptions/[id] PATCH]', err);
     return Response.json({ error: 'Failed to update subscription' }, { status: 500 });
   }
@@ -81,10 +102,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await requireAuth();
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.select().from(subscriptions).where(eq(subscriptions.id, id)).get();
+    const existing = db.select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, id), eq(subscriptions.userId, session.userId)))
+      .get();
     if (!existing) return Response.json({ error: 'Not found' }, { status: 404 });
 
     // Unschedule all sources before deleting
@@ -106,6 +131,8 @@ export async function DELETE(
     db.delete(subscriptions).where(eq(subscriptions.id, id)).run();
     return new Response(null, { status: 204 });
   } catch (err) {
+    const authError = handleAuthError(err);
+    if (authError) return authError;
     console.error('[subscriptions/[id] DELETE]', err);
     return Response.json({ error: 'Failed to delete subscription' }, { status: 500 });
   }

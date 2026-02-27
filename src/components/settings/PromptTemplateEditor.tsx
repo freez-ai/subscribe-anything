@@ -44,9 +44,10 @@ interface TemplateCardProps {
   template: PromptTemplate;
   providers: Provider[];
   onRefresh: () => void;
+  isAdmin?: boolean;
 }
 
-function TemplateCard({ template, providers, onRefresh }: TemplateCardProps) {
+function TemplateCard({ template, providers, onRefresh, isAdmin = false }: TemplateCardProps) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [content, setContent] = useState(template.content);
@@ -152,7 +153,8 @@ function TemplateCard({ template, providers, onRefresh }: TemplateCardProps) {
         <>
           <Separator />
           <CardContent className="pt-4 space-y-4">
-            {/* Provider selector */}
+            {/* Provider selector - admin only */}
+            {isAdmin && (
             <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
               <Label className="text-sm">关联供应商</Label>
               <Select value={selectedProviderId} onValueChange={handleProviderChange}>
@@ -184,8 +186,9 @@ function TemplateCard({ template, providers, onRefresh }: TemplateCardProps) {
                 为此模板单独指定供应商，可在不同场景使用不同智能程度的模型。
               </p>
             </div>
+            )}
 
-            <Separator />
+            {isAdmin && <Separator />}
 
             {/* Content editor */}
             <div className="space-y-3">
@@ -217,7 +220,7 @@ function TemplateCard({ template, providers, onRefresh }: TemplateCardProps) {
   );
 }
 
-export default function PromptTemplateEditor() {
+export default function PromptTemplateEditor({ isAdmin = false }: { isAdmin?: boolean }) {
   const { toast } = useToast();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -226,12 +229,14 @@ export default function PromptTemplateEditor() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [tplRes, provRes] = await Promise.all([
-        fetch('/api/settings/prompt-templates'),
-        fetch('/api/settings/llm-providers'),
+      const requests: Promise<Response>[] = [fetch('/api/settings/prompt-templates')];
+      if (isAdmin) requests.push(fetch('/api/settings/llm-providers'));
+      const results = await Promise.all(requests);
+      if (results.some((r) => !r.ok)) throw new Error('Failed to fetch');
+      const [tplData, provData] = await Promise.all([
+        results[0].json(),
+        isAdmin ? results[1].json() : Promise.resolve([]),
       ]);
-      if (!tplRes.ok || !provRes.ok) throw new Error('Failed to fetch');
-      const [tplData, provData] = await Promise.all([tplRes.json(), provRes.json()]);
       setTemplates(tplData);
       setProviders(provData);
     } catch {
@@ -243,7 +248,7 @@ export default function PromptTemplateEditor() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     fetchAll();
@@ -269,6 +274,7 @@ export default function PromptTemplateEditor() {
           template={template}
           providers={providers}
           onRefresh={fetchAll}
+          isAdmin={isAdmin}
         />
       ))}
     </div>
