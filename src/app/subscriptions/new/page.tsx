@@ -15,10 +15,10 @@ export default function NewSubscriptionPage() {
   useEffect(() => {
     async function checkLLM() {
       try {
-        const res = await fetch('/api/settings/llm-providers');
+        const res = await fetch('/api/settings/llm-providers/active');
         if (!res.ok) throw new Error('Failed');
-        const providers: { isActive: boolean }[] = await res.json();
-        setHasActiveProvider(providers.some((p) => p.isActive));
+        const { hasActive } = await res.json();
+        setHasActiveProvider(hasActive);
       } catch {
         setHasActiveProvider(false);
       } finally {
