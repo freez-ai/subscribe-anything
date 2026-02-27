@@ -58,6 +58,7 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [isCustomized, setIsCustomized] = useState(template.isCustomized);
+  const activeProviderId = providers.find((p) => p.isActive)?.id;
 
   // Sync when template data changes (e.g. after reset)
   useEffect(() => {
@@ -121,9 +122,6 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
     }
   };
 
-  const activeProvider = providers.find((p) => p.isActive);
-  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
-
   return (
     <Card>
       <CardHeader
@@ -138,13 +136,13 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
             )}
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            {selectedProvider ? (
+            {selectedProviderId && selectedProviderId !== UNSET ? (
               <span className="text-xs text-muted-foreground hidden sm:block">
-                {selectedProvider.name} · {selectedProvider.modelId}
+                {providers.find((p) => p.id === selectedProviderId)?.modelId}
               </span>
-            ) : activeProvider ? (
+            ) : activeProviderId ? (
               <span className="text-xs text-muted-foreground hidden sm:block">
-                {activeProvider.name} · {activeProvider.modelId}
+                {providers.find((p) => p.id === activeProviderId)?.modelId}
               </span>
             ) : null}
             <span className="text-muted-foreground text-xs">
@@ -158,8 +156,7 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
         <>
           <Separator />
           <CardContent className="pt-4 space-y-4">
-            {/* Provider selector - admin only */}
-            {isAdmin && (
+            {/* Provider selector - all users can select */}
             <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
               <Label className="text-sm">关联供应商</Label>
               <Select value={selectedProviderId} onValueChange={handleProviderChange}>
@@ -169,16 +166,16 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
                 <SelectContent>
                   <SelectItem value={UNSET}>
                     使用激活供应商
-                    {activeProvider && (
+                    {activeProviderId && (
                       <span className="ml-2 text-muted-foreground">
-                        ({activeProvider.name} · {activeProvider.modelId})
+                        {providers.find((p) => p.id === activeProviderId)?.modelId}
                       </span>
                     )}
                   </SelectItem>
                   {providers.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       <span className="flex items-center gap-1.5">
-                        {p.name} · {p.modelId}
+                        {p.modelId}
                         {p.isActive && (
                           <Badge variant="default" className="text-[10px] px-1 py-0 ml-1">激活</Badge>
                         )}
@@ -191,9 +188,8 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
                 为此模板单独指定供应商，可在不同场景使用不同智能程度的模型。
               </p>
             </div>
-            )}
 
-            {isAdmin && <Separator />}
+            <Separator />
 
             {/* Content editor */}
             <div className="space-y-3">
@@ -235,13 +231,15 @@ export default function PromptTemplateEditor({ isAdmin = false }: { isAdmin?: bo
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const requests: Promise<Response>[] = [fetch('/api/settings/prompt-templates')];
-      if (isAdmin) requests.push(fetch('/api/settings/llm-providers'));
+      const requests: Promise<Response>[] = [
+        fetch('/api/settings/prompt-templates'),
+        fetch('/api/settings/llm-providers/options'),
+      ];
       const results = await Promise.all(requests);
       if (results.some((r) => !r.ok)) throw new Error('Failed to fetch');
       const [tplData, provData] = await Promise.all([
         results[0].json(),
-        isAdmin ? results[1].json() : Promise.resolve([]),
+        results[1].json(),
       ]);
       setTemplates(tplData);
       setProviders(provData);
@@ -254,7 +252,7 @@ export default function PromptTemplateEditor({ isAdmin = false }: { isAdmin?: bo
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
     fetchAll();
