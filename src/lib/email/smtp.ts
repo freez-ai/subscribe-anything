@@ -73,6 +73,7 @@ function createTransporter(config: SmtpConfigData) {
       user: config.user,
       pass: config.password,
     },
+    family: 4,
   });
 }
 
