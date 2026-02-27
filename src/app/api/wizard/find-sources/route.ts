@@ -18,7 +18,8 @@ export async function POST(req: Request) {
       await findSourcesAgent(
         { topic: topic.trim(), criteria: criteria?.trim() },
         emit,
-        (info) => emit({ type: 'llm_call', ...info })
+        (info) => emit({ type: 'llm_call', ...info }),
+        session.userId
       );
       emit({ type: 'done' });
     });

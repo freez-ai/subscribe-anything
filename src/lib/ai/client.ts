@@ -42,14 +42,30 @@ export function getActiveProvider(): LLMProvider | null {
 /**
  * Returns the provider pinned to the given prompt template, falling back to
  * the globally active provider. Throws if no provider is available.
+ *
+ * When userId is provided, checks the user-specific template (`{userId}-{templateId}`)
+ * first, then falls back to the base template.
  */
-export function getProviderForTemplate(templateId: string): LLMProvider {
+export function getProviderForTemplate(templateId: string, userId?: string | null): LLMProvider {
   const db = getDb();
-  const tpl = db
-    .select({ providerId: promptTemplates.providerId, content: promptTemplates.content })
-    .from(promptTemplates)
-    .where(eq(promptTemplates.id, templateId))
-    .get();
+
+  // Try user-specific template first
+  let tpl: { providerId: string | null } | undefined;
+  if (userId) {
+    tpl = db
+      .select({ providerId: promptTemplates.providerId })
+      .from(promptTemplates)
+      .where(eq(promptTemplates.id, `${userId}-${templateId}`))
+      .get() ?? undefined;
+  }
+  // Fall back to base template
+  if (!tpl) {
+    tpl = db
+      .select({ providerId: promptTemplates.providerId })
+      .from(promptTemplates)
+      .where(eq(promptTemplates.id, templateId))
+      .get() ?? undefined;
+  }
 
   if (tpl?.providerId) {
     const pinned = db
@@ -73,9 +89,24 @@ export function getProviderForTemplate(templateId: string): LLMProvider {
 /**
  * Returns full template data (content and providerId) for the given template ID.
  * Used by agents to fetch both content and provider in one query.
+ *
+ * When userId is provided, checks the user-specific template (`{userId}-{templateId}`)
+ * first, then falls back to the base template.
  */
-export function getTemplate(templateId: string): { content: string; providerId: string | null } {
+export function getTemplate(templateId: string, userId?: string | null): { content: string; providerId: string | null } {
   const db = getDb();
+
+  // Try user-specific template first
+  if (userId) {
+    const userTpl = db
+      .select({ content: promptTemplates.content, providerId: promptTemplates.providerId })
+      .from(promptTemplates)
+      .where(eq(promptTemplates.id, `${userId}-${templateId}`))
+      .get();
+    if (userTpl) return { content: userTpl.content, providerId: userTpl.providerId };
+  }
+
+  // Fall back to base template
   const tpl = db
     .select({ content: promptTemplates.content, providerId: promptTemplates.providerId })
     .from(promptTemplates)

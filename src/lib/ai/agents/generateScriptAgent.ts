@@ -48,10 +48,11 @@ type Message = OpenAI.Chat.ChatCompletionMessageParam;
 export async function generateScriptAgent(
   source: SourceInput,
   onProgress?: (message: string) => void,
-  onLLMCall?: (info: LLMCallInfo) => void
+  onLLMCall?: (info: LLMCallInfo) => void,
+  userId?: string | null
 ): Promise<GenerateResult> {
-  const provider = getProviderForTemplate('generate-script');
-  const tpl = getTemplate('generate-script');
+  const provider = getProviderForTemplate('generate-script', userId);
+  const tpl = getTemplate('generate-script', userId);
 
   let sourceDomain = '';
   try { sourceDomain = new URL(source.url).hostname; } catch { /* ignore */ }
@@ -244,7 +245,8 @@ export async function generateScriptAgent(
               scriptArg,
               result.items ?? [],
               iteration + 1, // offset so LLM call indices don't overlap with current iteration
-              onLLMCall
+              onLLMCall,
+              userId
             );
 
             if (llmCheck.valid) {
@@ -352,7 +354,8 @@ export async function generateScriptAgent(
           finalScript,
           result.items ?? [],
           100, // high offset — avoids callIndex conflicts with the main loop
-          onLLMCall
+          onLLMCall,
+          userId
         );
         if (llmCheck.valid) {
           return {

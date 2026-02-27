@@ -38,10 +38,11 @@ export async function validateScriptAgent(
   script: string,
   items: CollectedItem[],
   callIndexOffset = 0,
-  onLLMCall?: (info: LLMCallInfo) => void
+  onLLMCall?: (info: LLMCallInfo) => void,
+  userId?: string | null
 ): Promise<LLMValidateResult> {
-  const provider = getProviderForTemplate('validate-script');
-  const tpl = getTemplate('validate-script');
+  const provider = getProviderForTemplate('validate-script', userId);
+  const tpl = getTemplate('validate-script', userId);
 
   // Fail open if template missing — don't block script generation entirely
   if (!tpl) {

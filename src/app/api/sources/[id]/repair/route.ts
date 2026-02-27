@@ -41,7 +41,8 @@ export async function POST(
           lastError: source.lastError ?? '未知错误',
         },
         (message) => emit({ type: 'progress', message }),
-        (info) => emit({ type: 'llm_call', ...info })
+        (info) => emit({ type: 'llm_call', ...info }),
+        session.userId
       );
 
       if (agentResult.success && agentResult.script) {

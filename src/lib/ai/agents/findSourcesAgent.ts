@@ -33,11 +33,12 @@ type Message = OpenAI.Chat.ChatCompletionMessageParam;
 export async function findSourcesAgent(
   { topic, criteria }: { topic: string; criteria?: string },
   emit: (event: unknown) => void,
-  onLLMCall?: (info: LLMCallInfo) => void
+  onLLMCall?: (info: LLMCallInfo) => void,
+  userId?: string | null
 ): Promise<FoundSource[]> {
-  const provider = getProviderForTemplate('find-sources');
+  const provider = getProviderForTemplate('find-sources', userId);
 
-  const tpl = getTemplate('find-sources');
+  const tpl = getTemplate('find-sources', userId);
   const systemContent = tpl.content
     .replace('{{topic}}', topic)
     .replace('{{criteria}}', criteria ?? '无');

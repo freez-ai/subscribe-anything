@@ -40,7 +40,8 @@ export async function POST(req: Request) {
               },
               (info) => {
                 emit({ type: 'source_progress', sourceIndex: i, status: 'llm_call', llmCall: info });
-              }
+              },
+              session.userId
             );
 
             if (result.success) {

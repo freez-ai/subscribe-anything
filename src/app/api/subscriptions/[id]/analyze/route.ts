@@ -105,7 +105,8 @@ export async function POST(
         {
           onChunk: (html) => emit({ type: 'chunk', html }),
           onCall: (info: LLMCallInfo) => emit({ type: 'llm_call', ...info }),
-        }
+        },
+        session.userId
       );
       emit({ type: 'done' });
     });

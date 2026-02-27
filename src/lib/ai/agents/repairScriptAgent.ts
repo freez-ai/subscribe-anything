@@ -36,10 +36,11 @@ type Message = OpenAI.Chat.ChatCompletionMessageParam;
 export async function repairScriptAgent(
   input: RepairInput,
   onProgress?: (message: string) => void,
-  onLLMCall?: (info: LLMCallInfo) => void
+  onLLMCall?: (info: LLMCallInfo) => void,
+  userId?: string | null
 ): Promise<RepairResult> {
-  const provider = getProviderForTemplate('repair-script');
-  const tpl = getTemplate('repair-script');
+  const provider = getProviderForTemplate('repair-script', userId);
+  const tpl = getTemplate('repair-script', userId);
 
   if (!tpl) return { success: false, reason: '未找到修复脚本提示模板' };
 

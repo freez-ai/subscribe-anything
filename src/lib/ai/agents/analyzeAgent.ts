@@ -29,11 +29,12 @@ export interface AnalyzeAgentCallbacks {
 
 export async function analyzeAgent(
   input: AnalyzeInput,
-  callbacks: AnalyzeAgentCallbacks
+  callbacks: AnalyzeAgentCallbacks,
+  userId?: string | null
 ): Promise<void> {
   const { onChunk, onCall } = callbacks;
-  const provider = getProviderForTemplate('analyze-subscription');
-  const tpl = getTemplate('analyze-subscription');
+  const provider = getProviderForTemplate('analyze-subscription', userId);
+  const tpl = getTemplate('analyze-subscription', userId);
 
   if (!tpl) {
     onChunk('<p style="color:red">analyze-subscription 提示词模板未找到</p>');
