@@ -15,8 +15,22 @@ export async function GET(req: Request) {
 
     const db = getDb();
 
-    // Join with subscriptions to filter by user
-    let query = db
+    if (subscriptionId) {
+      // Verify the subscription belongs to the user first
+      const sub = db.select()
+        .from(subscriptions)
+        .where(and(eq(subscriptions.id, subscriptionId), eq(subscriptions.userId, session.userId)))
+        .get();
+      if (!sub) {
+        return Response.json({ error: 'Not found' }, { status: 404 });
+      }
+    }
+
+    const whereCondition = subscriptionId
+      ? and(eq(subscriptions.userId, session.userId), eq(sources.subscriptionId, subscriptionId))
+      : eq(subscriptions.userId, session.userId);
+
+    const rows = db
       .select({
         id: sources.id,
         subscriptionId: sources.subscriptionId,
@@ -39,22 +53,11 @@ export async function GET(req: Request) {
       })
       .from(sources)
       .innerJoin(subscriptions, eq(sources.subscriptionId, subscriptions.id))
-      .where(eq(subscriptions.userId, session.userId))
-      .orderBy(desc(sources.createdAt));
-
-    if (subscriptionId) {
-      // Verify the subscription belongs to the user first
-      const sub = db.select()
-        .from(subscriptions)
-        .where(and(eq(subscriptions.id, subscriptionId), eq(subscriptions.userId, session.userId)))
-        .get();
-      if (!sub) {
-        return Response.json({ error: 'Not found' }, { status: 404 });
-      }
-      query = query.where(eq(sources.subscriptionId, subscriptionId)) as typeof query;
-    }
-
-    const rows = query.limit(limit).offset(offset).all();
+      .where(whereCondition)
+      .orderBy(desc(sources.createdAt))
+      .limit(limit)
+      .offset(offset)
+      .all();
     return Response.json({ data: rows, page, limit });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {
