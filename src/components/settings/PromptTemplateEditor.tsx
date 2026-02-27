@@ -58,14 +58,18 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [isCustomized, setIsCustomized] = useState(template.isCustomized);
+  const [originalContent, setOriginalContent] = useState(template.content);
   const activeProviderId = providers.find((p) => p.isActive)?.id;
 
   // Sync when template data changes (e.g. after reset)
   useEffect(() => {
     setContent(template.content);
+    setOriginalContent(template.content);
     setSelectedProviderId(template.providerId ?? UNSET);
     setIsCustomized(template.isCustomized);
   }, [template.content, template.providerId, template.isCustomized]);
+
+  const isContentModified = content !== originalContent;
 
   const handleSave = async () => {
     setSaving(true);
@@ -210,7 +214,7 @@ function TemplateCard({ template, providers, onRefresh, isAdmin = false }: Templ
                   <RotateCcw className="h-3.5 w-3.5 mr-1" />
                   {resetting ? '恢复中...' : '恢复默认'}
                 </Button>
-                <Button size="sm" onClick={handleSave} disabled={saving || resetting}>
+                <Button size="sm" onClick={handleSave} disabled={!isContentModified || saving || resetting}>
                   {saving ? '保存中...' : '保存'}
                 </Button>
               </div>
