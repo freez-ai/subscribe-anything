@@ -291,6 +291,25 @@ export async function runMigrations() {
       updated_at INTEGER NOT NULL
     )`);
   } catch { /* already exists */ }
+  // Favorites table (for message card favorites feature)
+  try {
+    sqlite.exec(`CREATE TABLE IF NOT EXISTS favorites (
+      id TEXT PRIMARY KEY,
+      original_card_id TEXT,
+      title TEXT NOT NULL,
+      summary TEXT,
+      thumbnail_url TEXT,
+      source_url TEXT NOT NULL,
+      published_at INTEGER,
+      meets_criteria_flag INTEGER NOT NULL DEFAULT 0,
+      criteria_result TEXT,
+      metric_value TEXT,
+      subscription_topic TEXT,
+      source_title TEXT,
+      favorite_at INTEGER NOT NULL,
+      is_favorite INTEGER NOT NULL DEFAULT 1
+    )`);
+  } catch { /* already exists */ }
 
   // Seed default prompt templates (idempotent)
   seedPromptTemplates(db);
@@ -439,6 +458,23 @@ function bootstrapSchema(sqlite: InstanceType<typeof Database>) {
       is_active INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS favorites (
+      id TEXT PRIMARY KEY,
+      original_card_id TEXT,
+      title TEXT NOT NULL,
+      summary TEXT,
+      thumbnail_url TEXT,
+      source_url TEXT NOT NULL,
+      published_at INTEGER,
+      meets_criteria_flag INTEGER NOT NULL DEFAULT 0,
+      criteria_result TEXT,
+      metric_value TEXT,
+      subscription_topic TEXT,
+      source_title TEXT,
+      favorite_at INTEGER NOT NULL,
+      is_favorite INTEGER NOT NULL DEFAULT 1
     );
   `);
   console.log('[DB] Schema bootstrapped');
