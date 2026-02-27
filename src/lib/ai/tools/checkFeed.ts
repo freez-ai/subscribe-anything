@@ -28,8 +28,26 @@ export interface CheckFeedResult {
   templateMismatch?: boolean;
   /** Present when `keywords` was supplied. */
   keywordFound?: boolean;
+  /** Error message extracted from an RSSHub error HTML page. */
+  errorMessage?: string;
   /** Guidance for the LLM when a check fails. */
   hint?: string;
+}
+
+/**
+ * Extract the error message from an RSSHub error HTML page.
+ * Looks for the <code class="...details..."> element produced by RSSHub's error template.
+ */
+function extractRssHubError(html: string): string | undefined {
+  const match = html.match(/<code[^>]+class="[^"]*\bdetails\b[^"]*"[^>]*>([\s\S]*?)<\/code>/i);
+  if (!match) return undefined;
+  return match[1]
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(parseInt(code, 10)))
+    .trim();
 }
 
 export async function checkFeed(
@@ -93,7 +111,14 @@ export async function checkFeed(
       }
 
       if (res.status < 200 || res.status >= 300) {
-        results.push({ valid: false, status: res.status });
+        let errorMessage: string | undefined;
+        try {
+          const errorHtml = await res.text();
+          errorMessage = extractRssHubError(errorHtml);
+        } catch {
+          // ignore — body unavailable
+        }
+        results.push({ valid: false, status: res.status, ...(errorMessage !== undefined && { errorMessage }) });
         continue;
       }
 
@@ -120,7 +145,8 @@ export async function checkFeed(
         text.includes('<entry ');
 
       if (!isXmlFeed) {
-        results.push({ valid: false, status: res.status });
+        const errorMessage = extractRssHubError(text);
+        results.push({ valid: false, status: res.status, ...(errorMessage !== undefined && { errorMessage }) });
         continue;
       }
 
