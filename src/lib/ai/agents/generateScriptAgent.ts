@@ -11,10 +11,7 @@
  * source_progress events based on this function's return value.
  */
 
-import { eq } from 'drizzle-orm';
-import { getDb } from '@/lib/db';
-import { promptTemplates } from '@/lib/db/schema';
-import { getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
+import { getTemplate, getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
 import type { LLMCallInfo } from '@/lib/ai/client';
 import { webFetch, webFetchToolDef } from '@/lib/ai/tools/webFetch';
 import { webFetchBrowser, webFetchBrowserToolDef } from '@/lib/ai/tools/webFetchBrowser';
@@ -54,20 +51,12 @@ export async function generateScriptAgent(
   onLLMCall?: (info: LLMCallInfo) => void
 ): Promise<GenerateResult> {
   const provider = getProviderForTemplate('generate-script');
-
-  const db = getDb();
-  const tplRow = db
-    .select()
-    .from(promptTemplates)
-    .where(eq(promptTemplates.id, 'generate-script'))
-    .get();
-
-  if (!tplRow) return { success: false, error: '未找到脚本生成提示模板' };
+  const tpl = getTemplate('generate-script');
 
   let sourceDomain = '';
   try { sourceDomain = new URL(source.url).hostname; } catch { /* ignore */ }
 
-  const systemContent = tplRow.content
+  const systemContent = tpl.content
     .replace('{{title}}', source.title)
     .replace('{{url}}', source.url)
     .replace('{{domain}}', sourceDomain)

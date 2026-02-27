@@ -6,10 +6,7 @@
  * Reports LLM call info via onCall callback (for debug UI).
  */
 
-import { eq } from 'drizzle-orm';
-import { getDb } from '@/lib/db';
-import { promptTemplates } from '@/lib/db/schema';
-import { getProviderForTemplate, buildOpenAIClient, llmStream, type LLMCallInfo } from '@/lib/ai/client';
+import { getTemplate, getProviderForTemplate, buildOpenAIClient, llmStream, type LLMCallInfo } from '@/lib/ai/client';
 
 export interface AnalyzeInput {
   topic: string;
@@ -36,15 +33,9 @@ export async function analyzeAgent(
 ): Promise<void> {
   const { onChunk, onCall } = callbacks;
   const provider = getProviderForTemplate('analyze-subscription');
+  const tpl = getTemplate('analyze-subscription');
 
-  const db = getDb();
-  const tplRow = db
-    .select()
-    .from(promptTemplates)
-    .where(eq(promptTemplates.id, 'analyze-subscription'))
-    .get();
-
-  if (!tplRow) {
+  if (!tpl) {
     onChunk('<p style="color:red">analyze-subscription 提示词模板未找到</p>');
     return;
   }
@@ -65,7 +56,7 @@ export async function analyzeAgent(
   );
 
   // Replace all template variables
-  const systemContent = tplRow.content
+  const systemContent = tpl.content
     .replace(/\{\{topic\}\}/g, input.topic)
     .replace(/\{\{criteria\}\}/g, input.criteria ?? '无')
     .replace(/\{\{count\}\}/g, String(input.cards.length))

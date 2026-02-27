@@ -10,10 +10,7 @@
  * Does NOT auto-apply the fix; the caller (API route + UI) confirm before PATCH.
  */
 
-import { eq } from 'drizzle-orm';
-import { getDb } from '@/lib/db';
-import { promptTemplates } from '@/lib/db/schema';
-import { getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
+import { getTemplate, getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
 import type { LLMCallInfo } from '@/lib/ai/client';
 import { webFetch, webFetchToolDef } from '@/lib/ai/tools/webFetch';
 import { webFetchBrowser, webFetchBrowserToolDef } from '@/lib/ai/tools/webFetchBrowser';
@@ -42,17 +39,11 @@ export async function repairScriptAgent(
   onLLMCall?: (info: LLMCallInfo) => void
 ): Promise<RepairResult> {
   const provider = getProviderForTemplate('repair-script');
+  const tpl = getTemplate('repair-script');
 
-  const db = getDb();
-  const tplRow = db
-    .select()
-    .from(promptTemplates)
-    .where(eq(promptTemplates.id, 'repair-script'))
-    .get();
+  if (!tpl) return { success: false, reason: '未找到修复脚本提示模板' };
 
-  if (!tplRow) return { success: false, reason: '未找到修复脚本提示模板' };
-
-  const systemContent = tplRow.content
+  const systemContent = tpl.content
     .replace('{{url}}', input.url)
     .replace('{{lastError}}', input.lastError)
     .replace('{{script}}', input.script);

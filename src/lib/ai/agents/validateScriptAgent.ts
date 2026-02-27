@@ -18,10 +18,7 @@
  *   ```
  */
 
-import { eq } from 'drizzle-orm';
-import { getDb } from '@/lib/db';
-import { promptTemplates } from '@/lib/db/schema';
-import { getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
+import { getTemplate, getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
 import type { LLMCallInfo } from '@/lib/ai/client';
 import { webFetch, webFetchToolDef } from '@/lib/ai/tools/webFetch';
 import type { CollectedItem } from '@/lib/sandbox/contract';
@@ -44,21 +41,15 @@ export async function validateScriptAgent(
   onLLMCall?: (info: LLMCallInfo) => void
 ): Promise<LLMValidateResult> {
   const provider = getProviderForTemplate('validate-script');
-
-  const db = getDb();
-  const tplRow = db
-    .select()
-    .from(promptTemplates)
-    .where(eq(promptTemplates.id, 'validate-script'))
-    .get();
+  const tpl = getTemplate('validate-script');
 
   // Fail open if template missing — don't block script generation entirely
-  if (!tplRow) {
+  if (!tpl) {
     return { valid: true, reason: 'validate-script 模板未找到，跳过 LLM 审查' };
   }
 
   const itemsPreview = JSON.stringify(items.slice(0, 5), null, 2);
-  const systemContent = tplRow.content
+  const systemContent = tpl.content
     .replace('{{url}}', source.url)
     .replace('{{description}}', source.description || '无描述')
     .replace('{{criteria}}', source.criteria?.trim() || '无')

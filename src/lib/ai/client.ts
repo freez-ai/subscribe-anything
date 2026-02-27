@@ -46,7 +46,7 @@ export function getActiveProvider(): LLMProvider | null {
 export function getProviderForTemplate(templateId: string): LLMProvider {
   const db = getDb();
   const tpl = db
-    .select({ providerId: promptTemplates.providerId })
+    .select({ providerId: promptTemplates.providerId, content: promptTemplates.content })
     .from(promptTemplates)
     .where(eq(promptTemplates.id, templateId))
     .get();
@@ -68,6 +68,23 @@ export function getProviderForTemplate(templateId: string): LLMProvider {
     );
   }
   return active;
+}
+
+/**
+ * Returns full template data (content and providerId) for the given template ID.
+ * Used by agents to fetch both content and provider in one query.
+ */
+export function getTemplate(templateId: string): { content: string; providerId: string | null } {
+  const db = getDb();
+  const tpl = db
+    .select({ content: promptTemplates.content, providerId: promptTemplates.providerId })
+    .from(promptTemplates)
+    .where(eq(promptTemplates.id, templateId))
+    .get();
+  if (!tpl) {
+    throw new Error(`Prompt template '${templateId}' not found`);
+  }
+  return { content: tpl.content, providerId: tpl.providerId };
 }
 
 /** Creates an OpenAI client from a specific provider record. */

@@ -12,10 +12,7 @@
  *   { type: 'error', message: string }           — (emitted by sseStream on throw)
  */
 
-import { eq } from 'drizzle-orm';
-import { getDb } from '@/lib/db';
-import { promptTemplates } from '@/lib/db/schema';
-import { getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
+import { getTemplate, getProviderForTemplate, buildOpenAIClient, llmStream } from '@/lib/ai/client';
 import type { LLMCallInfo } from '@/lib/ai/client';
 import { webSearch, webSearchToolDef } from '@/lib/ai/tools/webSearch';
 import { rssRadar, rssRadarToolDef } from '@/lib/ai/tools/rssRadar';
@@ -40,16 +37,8 @@ export async function findSourcesAgent(
 ): Promise<FoundSource[]> {
   const provider = getProviderForTemplate('find-sources');
 
-  const db = getDb();
-  const tplRow = db
-    .select()
-    .from(promptTemplates)
-    .where(eq(promptTemplates.id, 'find-sources'))
-    .get();
-
-  if (!tplRow) throw new Error('find-sources prompt template not found');
-
-  const systemContent = tplRow.content
+  const tpl = getTemplate('find-sources');
+  const systemContent = tpl.content
     .replace('{{topic}}', topic)
     .replace('{{criteria}}', criteria ?? '无');
 
