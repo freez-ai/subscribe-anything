@@ -20,6 +20,7 @@ export interface AnalyzeInput {
     summary?: string | null;
     publishedAt?: string | null;
     sourceName?: string;
+    sourceUrl?: string | null;
     meetsCriteriaFlag?: boolean;
   }>;
 }
@@ -56,6 +57,7 @@ export async function analyzeAgent(
       summary: c.summary?.slice(0, 300) || null,
       publishedAt: c.publishedAt ? c.publishedAt.slice(0, 10) : null,
       source: c.sourceName || null,
+      url: c.sourceUrl || null,
       meetsCriteria: c.meetsCriteriaFlag || false,
     })),
     null,

@@ -33,6 +33,7 @@ export async function POST(
     summary: string | null;
     publishedAt: Date | null;
     sourceName: string | null;
+    sourceUrl: string | null;
     meetsCriteriaFlag: boolean;
   }>;
 
@@ -45,6 +46,7 @@ export async function POST(
         summary: messageCards.summary,
         publishedAt: messageCards.publishedAt,
         sourceName: sources.title,
+        sourceUrl: messageCards.sourceUrl,
         meetsCriteriaFlag: messageCards.meetsCriteriaFlag,
       })
       .from(messageCards)
@@ -60,6 +62,7 @@ export async function POST(
         summary: messageCards.summary,
         publishedAt: messageCards.publishedAt,
         sourceName: sources.title,
+        sourceUrl: messageCards.sourceUrl,
         meetsCriteriaFlag: messageCards.meetsCriteriaFlag,
       })
       .from(messageCards)
@@ -85,6 +88,7 @@ export async function POST(
           summary: c.summary,
           publishedAt: c.publishedAt ? new Date(c.publishedAt).toISOString() : null,
           sourceName: c.sourceName ?? undefined,
+          sourceUrl: c.sourceUrl,
           meetsCriteriaFlag: c.meetsCriteriaFlag,
         })),
       },
