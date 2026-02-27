@@ -1,11 +1,64 @@
-.next
-node_modules
-dist
-data
-.env.local
+# 依赖包 (Dependencies)
+node_modules/
+.pnp
+.pnp.js
+
+# 测试产物 (Testing)
+coverage/
+
+# Next.js & 构建产物 (Build output & caches)
+.next/
+out/
+build/
+dist/
+
+# 环境变量 (Environment variables)
 .env*.local
+.env
+.env.development
+.env.test
+.env.production
+# 允许提交 .env.example 作为模板
+!.env.example
+
+# 数据库与本地数据 (Database & Local Data)
+data/
 *.db
 *.db-wal
 *.db-shm
-.claude
-tsconfig.tsbuildinfo
+
+# TypeScript 缓存与声明 (TypeScript)
+*.tsbuildinfo
+next-env.d.ts
+
+# 云平台部署缓存 (Deployment caches)
+.vercel/
+
+# 日志文件 (Logs)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 编辑器、IDE & AI 辅助工具 (Editors, IDEs & AI tools)
+.claude/
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 操作系统自动生成的文件 (OS generated files)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
