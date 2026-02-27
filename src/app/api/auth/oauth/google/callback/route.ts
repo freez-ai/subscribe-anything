@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, gt } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { users, oauthStates, promptTemplates, oauthConfig } from '@/lib/db/schema';
+import { users, oauthStates, oauthConfig } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { createId } from '@paralleldrive/cuid2';
 import { sql } from 'drizzle-orm';
@@ -149,21 +149,6 @@ export async function GET(req: NextRequest) {
         updatedAt: now,
         passwordHash: null,
       };
-
-      // Copy prompt templates for the new user
-      const templates = db.select().from(promptTemplates).all();
-      for (const tpl of templates) {
-        await db.insert(promptTemplates).values({
-          id: `${userId}-${tpl.id}`,
-          name: tpl.name,
-          description: tpl.description,
-          content: tpl.content,
-          defaultContent: tpl.defaultContent,
-          providerId: tpl.providerId,
-          userId: userId,
-          updatedAt: now,
-        });
-      }
     }
 
     // Set session

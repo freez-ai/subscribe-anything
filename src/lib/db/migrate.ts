@@ -358,6 +358,23 @@ export async function runMigrations() {
   // Seed default RSS instance (idempotent)
   seedRssInstance(sqlite);
 
+  // Clean up duplicate user templates created by the old eager-copy bug.
+  // Valid user templates have id = `${user_id}-${baseId}`.
+  // Any user template whose id doesn't match this pattern is stale and should be removed.
+  try {
+    sqlite
+      .prepare(
+        `DELETE FROM prompt_templates
+         WHERE user_id IS NOT NULL
+           AND id != user_id || '-find-sources'
+           AND id != user_id || '-generate-script'
+           AND id != user_id || '-validate-script'
+           AND id != user_id || '-repair-script'
+           AND id != user_id || '-analyze-subscription'`
+      )
+      .run();
+  } catch { /* ignore if user_id column doesn't exist yet */ }
+
   sqlite.close();
   console.log('[DB] Initialization complete');
 }
