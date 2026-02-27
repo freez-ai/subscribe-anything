@@ -9,6 +9,15 @@ import { sql } from 'drizzle-orm';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
+function getCallbackUrl(req: NextRequest): string {
+  if (process.env.APP_URL) {
+    return `${process.env.APP_URL.replace(/\/$/, '')}/api/auth/oauth/google/callback`;
+  }
+  const proto = req.headers.get('x-forwarded-proto') || new URL(req.url).protocol.replace(':', '');
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || new URL(req.url).host;
+  return `${proto}://${host}/api/auth/oauth/google/callback`;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -51,7 +60,7 @@ export async function GET(req: NextRequest) {
     await db.delete(oauthStates).where(eq(oauthStates.id, stateRecord.id));
 
     // Exchange code for tokens
-    const callbackUrl = new URL('/api/auth/oauth/google/callback', req.url);
+    const callbackUrl = getCallbackUrl(req);
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
