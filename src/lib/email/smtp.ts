@@ -66,7 +66,7 @@ export function isVerificationRequired(): boolean {
  * Create nodemailer transporter from config
  */
 function createTransporter(config: SmtpConfigData) {
-  const options: SMTPTransport.Options = {
+  const options: SMTPTransport.Options & { family?: number } = {
     host: config.host,
     port: config.port,
     secure: config.secure,
