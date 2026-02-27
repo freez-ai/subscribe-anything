@@ -257,6 +257,18 @@ export async function runMigrations() {
   // Seed default RSS instance (idempotent)
   seedRssInstance(sqlite);
 
+  // Repair: older migrations incorrectly set user_id on base system templates.
+  // Base templates must always have user_id = NULL so the cleanup DELETE below ignores them.
+  try {
+    sqlite
+      .prepare(
+        `UPDATE prompt_templates SET user_id = NULL
+           WHERE id IN ('find-sources','generate-script','validate-script','repair-script','analyze-subscription')
+             AND user_id IS NOT NULL`
+      )
+      .run();
+  } catch { /* ignore if user_id column doesn't exist yet */ }
+
   // Clean up duplicate user templates created by the old eager-copy bug.
   // Valid user templates have id = `${user_id}-${baseId}`.
   // Any user template whose id doesn't match this pattern is stale and should be removed.
@@ -535,8 +547,15 @@ function migrateUserSystem(sqlite: InstanceType<typeof Database>) {
   // 8. Migrate existing data to guest user (only if not already migrated)
   sqlite.prepare(`UPDATE subscriptions SET user_id = ? WHERE user_id IS NULL`).run(GUEST_USER_ID);
   sqlite.prepare(`UPDATE favorites SET user_id = ? WHERE user_id IS NULL`).run(GUEST_USER_ID);
-  // prompt_templates: existing templates become guest user's templates
-  sqlite.prepare(`UPDATE prompt_templates SET user_id = ? WHERE user_id IS NULL`).run(GUEST_USER_ID);
+  // prompt_templates: only user-specific (non-base) templates become guest user's templates.
+  // Base system templates ('find-sources' etc.) must keep user_id = NULL so the cleanup
+  // DELETE below does not mistake them for stale user copies and delete them.
+  sqlite
+    .prepare(
+      `UPDATE prompt_templates SET user_id = ? WHERE user_id IS NULL
+         AND id NOT IN ('find-sources','generate-script','validate-script','repair-script','analyze-subscription')`
+    )
+    .run(GUEST_USER_ID);
 
   console.log('[DB] User system migration complete');
 }
