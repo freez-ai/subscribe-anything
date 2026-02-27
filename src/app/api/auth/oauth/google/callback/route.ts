@@ -9,13 +9,17 @@ import { sql } from 'drizzle-orm';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
-function getCallbackUrl(req: NextRequest): string {
+function getPublicBaseUrl(req: NextRequest): string {
   if (process.env.APP_URL) {
-    return `${process.env.APP_URL.replace(/\/$/, '')}/api/auth/oauth/google/callback`;
+    return process.env.APP_URL.replace(/\/$/, '');
   }
   const proto = req.headers.get('x-forwarded-proto') || new URL(req.url).protocol.replace(':', '');
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || new URL(req.url).host;
-  return `${proto}://${host}/api/auth/oauth/google/callback`;
+  return `${proto}://${host}`;
+}
+
+function getCallbackUrl(req: NextRequest): string {
+  return `${getPublicBaseUrl(req)}/api/auth/oauth/google/callback`;
 }
 
 export async function GET(req: NextRequest) {
@@ -27,11 +31,11 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error('[OAuth] Google OAuth error:', error);
-      return NextResponse.redirect(new URL('/login?error=oauth_failed', req.url));
+      return NextResponse.redirect(new URL('/login?error=oauth_failed', getPublicBaseUrl(req)));
     }
 
     if (!code || !state) {
-      return NextResponse.redirect(new URL('/login?error=invalid_request', req.url));
+      return NextResponse.redirect(new URL('/login?error=invalid_request', getPublicBaseUrl(req)));
     }
 
     const db = getDb();
@@ -42,7 +46,7 @@ export async function GET(req: NextRequest) {
     const clientSecret = config?.clientSecret || GOOGLE_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {
-      return NextResponse.redirect(new URL('/login?error=oauth_not_configured', req.url));
+      return NextResponse.redirect(new URL('/login?error=oauth_not_configured', getPublicBaseUrl(req)));
     }
 
     // Verify state
@@ -53,7 +57,7 @@ export async function GET(req: NextRequest) {
       .get();
 
     if (!stateRecord) {
-      return NextResponse.redirect(new URL('/login?error=invalid_state', req.url));
+      return NextResponse.redirect(new URL('/login?error=invalid_state', getPublicBaseUrl(req)));
     }
 
     // Delete used state
@@ -75,7 +79,7 @@ export async function GET(req: NextRequest) {
 
     if (!tokenResponse.ok) {
       console.error('[OAuth] Token exchange failed');
-      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', req.url));
+      return NextResponse.redirect(new URL('/login?error=token_exchange_failed', getPublicBaseUrl(req)));
     }
 
     const tokens = await tokenResponse.json();
@@ -87,7 +91,7 @@ export async function GET(req: NextRequest) {
 
     if (!userResponse.ok) {
       console.error('[OAuth] Failed to get user info');
-      return NextResponse.redirect(new URL('/login?error=user_info_failed', req.url));
+      return NextResponse.redirect(new URL('/login?error=user_info_failed', getPublicBaseUrl(req)));
     }
 
     const googleUser = await userResponse.json();
@@ -171,9 +175,9 @@ export async function GET(req: NextRequest) {
 
     // Redirect to original URL or home
     const redirectUrl = stateRecord.redirectUrl || '/';
-    return NextResponse.redirect(new URL(redirectUrl, req.url));
+    return NextResponse.redirect(new URL(redirectUrl, getPublicBaseUrl(req)));
   } catch (error) {
     console.error('[OAuth] Callback error:', error);
-    return NextResponse.redirect(new URL('/login?error=internal_error', req.url));
+    return NextResponse.redirect(new URL('/login?error=internal_error', getPublicBaseUrl(req)));
   }
 }
