@@ -82,7 +82,7 @@ URL：{{url}}
 **工作流程**
 1. 用 webFetch 抓取目标 URL，判断内容类型：
    - 含 \`<rss\`/\`<feed\`/\`<item\`/\`<entry\` → RSS/Atom，直接编写解析脚本
-   - HTML 页面 → 调用 rssRadar；有匹配路由则抓 RSS，无匹配则解析 HTML 或 API
+   - HTML 页面 → 调用 rssRadar；有匹配路由则将 templateUrl 中的 \`:param\` 占位符替换为真实参数，再用 webFetch 拉取完整 RSS XML 后编写解析脚本；无匹配则解析 HTML 或 API
    - 返回空/失败 → 改用 webFetchBrowser，优先分析 capturedRequests 中的 API 端点
 2. RSS/XML 解析：用 split/indexOf/slice 逐块提取字段；**禁止对 XML 标签用正则**；务必 webFetch 实际内容确认 XML 结构后再写脚本
 3. 脚本写好后调用 validateScript；失败则修复重试（最多 3 次），有 suggestedScript 时优先验证它
