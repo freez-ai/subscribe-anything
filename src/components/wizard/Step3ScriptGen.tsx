@@ -11,6 +11,7 @@ import {
   Play,
   RotateCcw,
   Square,
+  Trash2,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -544,13 +545,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                 ? `下一步（${successSources.length} 个源就绪）`
                 : '下一步'}
           </Button>
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className="flex-none"
-          >
-            暂存
-          </Button>
           {hasSuccess && onManagedCreate && (
             <Button
               variant="outline"
@@ -558,7 +552,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                 abortRef.current?.abort();
                 onManagedCreate(successSources);
               }}
-              className="flex-none"
+              className="flex-none text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
               title={anyInProgress
                 ? '中止当前生成，将已完成的源交给后台托管创建'
                 : '跳过确认步骤，在后台直接创建订阅'}
@@ -567,13 +561,22 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
               {anyInProgress ? '转后台托管' : '后台托管创建'}
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={onBack}
+            className="flex-none"
+          >
+            暂存
+          </Button>
           {onDiscard && (
             <Button
               variant="ghost"
+              size="icon"
               onClick={onDiscard}
-              className="flex-none text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="flex-none text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              title="丢弃此次订阅创建"
             >
-              丢弃
+              <Trash2 className="h-4 w-4" />
             </Button>
           )}
         </div>

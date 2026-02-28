@@ -337,11 +337,13 @@ export default function Step4Confirm({
           {onDiscard && (
             <Button
               variant="ghost"
+              size="icon"
               onClick={onDiscard}
               disabled={isSubmitting}
-              className="flex-none text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="flex-none text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              title="丢弃此次订阅创建"
             >
-              丢弃
+              <Trash2 className="h-4 w-4" />
             </Button>
           )}
         </div>

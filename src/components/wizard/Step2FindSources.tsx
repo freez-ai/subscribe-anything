@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Loader2, Search, BrainCircuit } from 'lucide-react';
+import { ExternalLink, Loader2, Search, BrainCircuit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -446,9 +446,6 @@ export default function Step2FindSources({
               '下一步'
             )}
           </Button>
-          <Button variant="outline" onClick={onBack} className="flex-none">
-            暂存
-          </Button>
           {onManagedCreate && (
             <Button
               variant="outline"
@@ -458,20 +455,25 @@ export default function Step2FindSources({
                 onManagedCreate(selected);
               }}
               disabled={isDone && selectedCount === 0}
-              className="flex-none"
+              className="flex-none text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
               title="AI 自动完成脚本生成，在后台创建订阅"
             >
               <BotIcon className="h-4 w-4 mr-1.5" />
               {isStreaming ? '转后台托管' : '后台托管创建'}
             </Button>
           )}
+          <Button variant="outline" onClick={onBack} className="flex-none">
+            暂存
+          </Button>
           {onDiscard && (
             <Button
               variant="ghost"
+              size="icon"
               onClick={onDiscard}
-              className="flex-none text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="flex-none text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              title="丢弃此次订阅创建"
             >
-              丢弃
+              <Trash2 className="h-4 w-4" />
             </Button>
           )}
         </div>
