@@ -29,7 +29,7 @@ interface Step3ScriptGenProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
-  onManagedCreate?: (generatedSources: GeneratedSource[]) => void;
+  onManagedCreate?: (generatedSources: GeneratedSource[], allSelectedTerminated: boolean) => void;
   onDiscard?: () => void;
 }
 
@@ -550,7 +550,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
               variant="outline"
               onClick={() => {
                 abortRef.current?.abort();
-                onManagedCreate(successSources);
+                onManagedCreate(successSources, allSelectedTerminated);
               }}
               className="flex-none text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
               title={anyInProgress
