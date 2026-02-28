@@ -1,12 +1,13 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 
 // POST /api/subscriptions/[id]/managed-takeover
-// Extracts wizard state from managed build logs, deletes the subscription,
-// and returns the state for the frontend to resume in the wizard.
+// Stops the managed pipeline (by switching status to manual_creating),
+// extracts current wizard state from logs, persists it, and returns it
+// for the frontend to resume seamlessly in the wizard.
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -26,44 +27,46 @@ export async function POST(
       return Response.json({ error: 'Not found' }, { status: 404 });
     }
 
-    // If already done (not in managed_creating), return alreadyDone flag
+    // If not in managed_creating, return alreadyDone so frontend can handle gracefully
     if (sub.managedStatus !== 'managed_creating') {
       return Response.json({ alreadyDone: true, managedStatus: sub.managedStatus });
     }
 
-    // Extract wizard state from logs
+    // Extract wizard state from logs (ordered by time)
     const logs = db
       .select()
       .from(managedBuildLogs)
       .where(eq(managedBuildLogs.subscriptionId, id))
+      .orderBy(asc(managedBuildLogs.createdAt))
       .all();
 
     let foundSources: FoundSource[] = [];
-    let generatedSources: GeneratedSource[] = [];
+    const generatedSources: GeneratedSource[] = [];
 
-    // Extract foundSources from find_sources step
+    // Extract foundSources from the find_sources success log (last one wins)
     for (const log of logs) {
       if (log.step === 'find_sources' && log.level === 'success' && log.payload) {
         try {
           const payload = JSON.parse(log.payload);
-          if (Array.isArray(payload)) {
-            foundSources = payload as FoundSource[];
-          }
+          if (Array.isArray(payload)) foundSources = payload as FoundSource[];
         } catch { /* ignore */ }
       }
     }
 
     // Extract generatedSources from generate_script success logs
+    // Each success log has payload: { script, cronExpression }
+    // We match the source by title extracted from the log message
+    const generatedUrls = new Set<string>();
     for (const log of logs) {
       if (log.step === 'generate_script' && log.level === 'success' && log.payload) {
         try {
           const payload = JSON.parse(log.payload) as { script?: string; cronExpression?: string };
-          // Find the corresponding source from foundSources by log message
           const titleMatch = log.message.match(/^"(.+)" 脚本生成成功/);
           if (titleMatch && payload.script) {
             const title = titleMatch[1];
             const source = foundSources.find((s) => s.title === title);
-            if (source) {
+            if (source && !generatedUrls.has(source.url)) {
+              generatedUrls.add(source.url);
               generatedSources.push({
                 title: source.title,
                 url: source.url,
@@ -79,19 +82,37 @@ export async function POST(
       }
     }
 
-    // Delete the subscription (cascade deletes logs)
-    // First unschedule any sources (shouldn't have any since it's still creating)
-    db.delete(subscriptions).where(eq(subscriptions.id, id)).run();
+    // Determine resume step:
+    // - Some scripts generated → Step3 (continue generating remaining)
+    // - Only sources found → Step3 (start generating)
+    // - Nothing yet → Step2
+    let resumeStep: 2 | 3 = 2;
+    if (foundSources.length > 0) resumeStep = 3;
 
-    // Determine resume step
-    let resumeStep: 2 | 3 | 4 = 2;
-    if (generatedSources.length > 0) {
-      resumeStep = 4;
-    } else if (foundSources.length > 0) {
-      resumeStep = 3;
-    }
+    // Build wizard state to persist
+    const wizardState = {
+      step: resumeStep,
+      topic: sub.topic,
+      criteria: sub.criteria ?? '',
+      foundSources,
+      selectedIndices: foundSources.map((_, i) => i),
+      generatedSources,
+      subscriptionId: id,
+    };
+
+    // Switch status to manual_creating (stops the pipeline via isCancelled check)
+    // and persist wizard state so the card can be resumed if user closes browser
+    db.update(subscriptions)
+      .set({
+        managedStatus: 'manual_creating',
+        wizardStateJson: JSON.stringify(wizardState),
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptions.id, id))
+      .run();
 
     return Response.json({
+      id,
       topic: sub.topic,
       criteria: sub.criteria ?? '',
       foundSources,

@@ -109,21 +109,22 @@ export default function ManagedProgressDrawer({
       const result = await res.json();
 
       if (result.alreadyDone) {
-        // Subscription was completed before takeover — just close and refresh
+        // Subscription completed/failed before takeover — close and refresh
         onClose();
         onTakeover();
         return;
       }
 
-      // Store wizard state and navigate to wizard
+      // Build wizard state including the subscription ID
+      // (subscription is now manual_creating, wizard can continue using same ID)
       const wizardState = {
         step: result.resumeStep,
         topic: result.topic,
         criteria: result.criteria ?? '',
         foundSources: result.foundSources ?? [],
-        selectedIndices: result.foundSources?.map((_: unknown, i: number) => i) ?? [],
+        selectedIndices: (result.foundSources ?? []).map((_: unknown, i: number) => i),
         generatedSources: result.generatedSources ?? [],
-        subscriptionId: undefined,
+        subscriptionId: result.id, // reuse existing subscription
       };
       sessionStorage.setItem('wizard-state', JSON.stringify(wizardState));
       onClose();

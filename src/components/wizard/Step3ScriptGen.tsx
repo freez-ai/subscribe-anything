@@ -46,10 +46,23 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
   const allSources = state.foundSources;
   const selectedSet = new Set(state.selectedIndices);
 
+  // Pre-populate from state.generatedSources (from takeover or previous session)
+  const preGenByUrl = new Map(state.generatedSources.map((s) => [s.url, s]));
+
   const [sourceStatuses, setSourceStatuses] = useState<SourceStatus[]>(
-    () => allSources.map((_, i) =>
-      selectedSet.has(i) ? { status: 'pending' as const } : { status: 'skipped' as const }
-    )
+    () => allSources.map((source, i) => {
+      const preGen = preGenByUrl.get(source.url);
+      if (preGen) {
+        // Already generated (from managed pipeline takeover)
+        return {
+          status: 'success' as const,
+          script: preGen.script,
+          cronExpression: preGen.cronExpression,
+          items: preGen.initialItems,
+        };
+      }
+      return selectedSet.has(i) ? { status: 'pending' as const } : { status: 'skipped' as const };
+    })
   );
   const [sourceLLMCalls, setSourceLLMCalls] = useState<LLMCallInfo[][]>(
     () => allSources.map(() => [])
@@ -222,9 +235,15 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
     [allSources, state.criteria, handleSourceEvent, updateStatus]
   );
 
-  // Auto-start all selected sources on mount
+  // Auto-start selected sources that are not already pre-populated (from takeover)
   useEffect(() => {
-    state.selectedIndices.forEach((globalIdx) => generateSource(globalIdx));
+    const preGenUrls = new Set(state.generatedSources.map((s) => s.url));
+    state.selectedIndices.forEach((globalIdx) => {
+      const source = allSources[globalIdx];
+      if (source && !preGenUrls.has(source.url)) {
+        generateSource(globalIdx);
+      }
+    });
     return () => {
       abortRefs.current.forEach((ctrl) => ctrl.abort());
     };
@@ -499,15 +518,24 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                 ? `下一步（${successSources.length} 个源就绪）`
                 : '下一步'}
           </Button>
-          {hasSuccess && !anyInProgress && onManagedCreate && (
+          {(hasSuccess || anyInProgress) && onManagedCreate && (
             <Button
               variant="outline"
-              onClick={() => onManagedCreate(successSources)}
+              onClick={() => {
+                // Snapshot current success sources before aborting in-progress ones
+                const currentSuccess = successSources;
+                // Abort all in-progress generations
+                abortRefs.current.forEach((ctrl) => ctrl.abort());
+                abortRefs.current.clear();
+                onManagedCreate(currentSuccess);
+              }}
               className="flex-none"
-              title="跳过确认步骤，在后台直接创建订阅"
+              title={anyInProgress
+                ? '中止当前生成，将已完成的源交给后台托管创建'
+                : '跳过确认步骤，在后台直接创建订阅'}
             >
               <Bot className="h-4 w-4 mr-1.5" />
-              后台托管创建
+              {anyInProgress ? '转后台托管' : '后台托管创建'}
             </Button>
           )}
         </div>

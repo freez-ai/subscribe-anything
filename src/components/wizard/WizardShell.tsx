@@ -182,13 +182,6 @@ export default function WizardShell() {
     generatedSources?: GeneratedSource[];
     startStep: 'find_sources' | 'generate_scripts' | 'complete';
   }) => {
-    // If we already have a subscriptionId, delete it first (it's a manual_creating placeholder)
-    if (state.subscriptionId) {
-      try {
-        await fetch(`/api/subscriptions/${state.subscriptionId}`, { method: 'DELETE' });
-      } catch { /* ignore */ }
-    }
-
     try {
       await fetch('/api/subscriptions/managed', {
         method: 'POST',
@@ -199,6 +192,8 @@ export default function WizardShell() {
           startStep: data.startStep,
           foundSources: data.foundSources,
           generatedSources: data.generatedSources,
+          // Reuse existing subscription (switches manual_creating → managed_creating)
+          existingSubscriptionId: state.subscriptionId,
         }),
       });
     } catch { /* ignore */ }

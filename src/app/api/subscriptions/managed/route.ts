@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { subscriptions } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
@@ -7,7 +7,8 @@ import type { ManagedStartStep } from '@/lib/managed/pipeline';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 
 // POST /api/subscriptions/managed
-// Creates a placeholder subscription and starts the managed pipeline in the background.
+// Creates a placeholder subscription (or reuses an existing one) and starts
+// the managed pipeline in the background.
 export async function POST(req: Request) {
   try {
     const session = await requireAuth();
@@ -18,12 +19,14 @@ export async function POST(req: Request) {
       startStep = 'find_sources',
       foundSources,
       generatedSources,
+      existingSubscriptionId,
     } = body as {
       topic?: string;
       criteria?: string;
       startStep?: ManagedStartStep;
       foundSources?: FoundSource[];
       generatedSources?: GeneratedSource[];
+      existingSubscriptionId?: string; // reuse a manual_creating subscription
     };
 
     if (!topic || typeof topic !== 'string' || !topic.trim()) {
@@ -32,26 +35,57 @@ export async function POST(req: Request) {
 
     const db = getDb();
     const now = new Date();
+    let subscriptionId: string;
 
-    // Create placeholder subscription
-    const subscription = db
-      .insert(subscriptions)
-      .values({
-        userId: session.userId,
-        topic: topic.trim(),
-        criteria: criteria?.trim() || null,
-        isEnabled: false,
-        managedStatus: 'managed_creating',
-        unreadCount: 0,
-        totalCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
-      .get();
+    if (existingSubscriptionId) {
+      // Reuse an existing manual_creating subscription — upgrade it to managed_creating
+      const existing = db
+        .select()
+        .from(subscriptions)
+        .where(and(
+          eq(subscriptions.id, existingSubscriptionId),
+          eq(subscriptions.userId, session.userId),
+        ))
+        .get();
+
+      if (!existing || existing.managedStatus !== 'manual_creating') {
+        return Response.json({ error: 'Subscription not found or not in manual_creating state' }, { status: 400 });
+      }
+
+      db.update(subscriptions)
+        .set({
+          managedStatus: 'managed_creating',
+          managedError: null,
+          wizardStateJson: null,
+          updatedAt: now,
+        })
+        .where(eq(subscriptions.id, existingSubscriptionId))
+        .run();
+
+      subscriptionId = existingSubscriptionId;
+    } else {
+      // Create a new placeholder subscription
+      const subscription = db
+        .insert(subscriptions)
+        .values({
+          userId: session.userId,
+          topic: topic.trim(),
+          criteria: criteria?.trim() || null,
+          isEnabled: false,
+          managedStatus: 'managed_creating',
+          unreadCount: 0,
+          totalCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+
+      subscriptionId = subscription.id;
+    }
 
     // Fire-and-forget managed pipeline
-    runManagedPipeline(subscription.id, {
+    runManagedPipeline(subscriptionId, {
       topic: topic.trim(),
       criteria: criteria?.trim(),
       startStep,
@@ -60,7 +94,7 @@ export async function POST(req: Request) {
       generatedSources,
     }).catch((err) => console.error('[managed POST] Pipeline error:', err));
 
-    return Response.json({ id: subscription.id }, { status: 201 });
+    return Response.json({ id: subscriptionId }, { status: 201 });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
