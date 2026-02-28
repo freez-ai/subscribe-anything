@@ -31,6 +31,8 @@ export default function WizardShell() {
   const [state, setState] = useState<WizardState>(DEFAULT_STATE);
   const [mounted, setMounted] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  // Only auto-start Step2 streaming when coming fresh from Step1 (not on restore/resume)
+  const [step2AutoStart, setStep2AutoStart] = useState(false);
 
   // Mount: handle new / resume-by-id / session-restore
   useEffect(() => {
@@ -118,10 +120,12 @@ export default function WizardShell() {
         subscriptionId: data.id,
       };
       setState(newState);
+      setStep2AutoStart(true);
       persistToDb(newState);
     } catch {
       // Fallback: advance without DB persistence
       setState((prev) => ({ ...prev, step: 2, topic, criteria }));
+      setStep2AutoStart(true);
     }
   };
 
@@ -371,6 +375,7 @@ export default function WizardShell() {
         {state.step === 2 && (
           <Step2FindSources
             {...stepProps}
+            autoStart={step2AutoStart}
             onManagedCreate={(foundSources) =>
               handleManagedCreate({
                 startStep: foundSources.length > 0 ? 'generate_scripts' : 'find_sources',

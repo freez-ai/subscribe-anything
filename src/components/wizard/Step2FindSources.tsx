@@ -16,6 +16,9 @@ interface Step2FindSourcesProps {
   onNext: () => void;
   onBack: () => void;
   onManagedCreate?: (foundSources: FoundSource[]) => void;
+  // When true (default), auto-start streaming if no cached sources.
+  // Set to false when resuming from takeover/restore so the user can choose.
+  autoStart?: boolean;
 }
 
 function defaultSelection(sources: FoundSource[]): Set<number> {
@@ -33,6 +36,7 @@ export default function Step2FindSources({
   onNext,
   onBack,
   onManagedCreate,
+  autoStart = true,
 }: Step2FindSourcesProps) {
   const [searchQueries, setSearchQueries] = useState<string[]>([]);
   const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
@@ -47,7 +51,11 @@ export default function Step2FindSources({
     if (state.foundSources.length > 0) return defaultSelection(state.foundSources);
     return new Set();
   });
-  const [isStreaming, setIsStreaming] = useState(state.foundSources.length === 0);
+  // started: true if streaming has been initiated at least once (or sources already exist)
+  const [started, setStarted] = useState(autoStart || state.foundSources.length > 0);
+  const [isStreaming, setIsStreaming] = useState(
+    state.foundSources.length === 0 && autoStart
+  );
   const [isDone, setIsDone] = useState(state.foundSources.length > 0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSearchProviderError, setIsSearchProviderError] = useState(false);
@@ -171,8 +179,8 @@ export default function Step2FindSources({
   };
 
   useEffect(() => {
-    // Auto-start only if no cached sources from a previous pass
-    if (state.foundSources.length === 0) {
+    // Auto-start only when coming from Step1 (autoStart=true) and no cached sources
+    if (state.foundSources.length === 0 && autoStart) {
       startStream();
     }
     return () => {
@@ -277,6 +285,16 @@ export default function Step2FindSources({
         </div>
       )}
 
+      {/* Initial state: not yet started (e.g. restored from takeover) */}
+      {!started && !isStreaming && !isDone && !errorMessage && (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+          <p>点击"开始分析"让 AI 发现合适的数据源</p>
+          {onManagedCreate && (
+            <p className="text-xs">或选择"后台托管创建"让系统在后台自动完成所有步骤</p>
+          )}
+        </div>
+      )}
+
       {/* Source list */}
       {sources.length > 0 && (
         <>
@@ -352,7 +370,7 @@ export default function Step2FindSources({
       )}
 
       {/* Empty state after done */}
-      {!isStreaming && isDone && sources.length === 0 && !errorMessage && (
+      {started && !isStreaming && isDone && sources.length === 0 && !errorMessage && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-3">
           <p>没有找到数据源</p>
           <Button variant="outline" size="sm" onClick={startStream}>
@@ -367,22 +385,31 @@ export default function Step2FindSources({
           <Button variant="outline" onClick={onBack} disabled={isStreaming} className="flex-none">
             返回
           </Button>
-          <Button
-            onClick={handleNext}
-            disabled={!isDone || selectedCount === 0}
-            className="flex-1 md:flex-none"
-          >
-            {!isDone && !errorMessage ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                分析中
-              </>
-            ) : selectedCount > 0 ? (
-              `下一步（${selectedCount} 个源）`
-            ) : (
-              '下一步'
-            )}
-          </Button>
+          {started ? (
+            <Button
+              onClick={handleNext}
+              disabled={!isDone || selectedCount === 0}
+              className="flex-1 md:flex-none"
+            >
+              {!isDone && !errorMessage ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  分析中
+                </>
+              ) : selectedCount > 0 ? (
+                `下一步（${selectedCount} 个源）`
+              ) : (
+                '下一步'
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => { setStarted(true); startStream(); }}
+              className="flex-1 md:flex-none"
+            >
+              开始分析
+            </Button>
+          )}
           {onManagedCreate && (
             <Button
               variant="outline"
