@@ -302,6 +302,7 @@ export default function SubscriptionCard({
               <>
                 {!isManagedCreating && !isManualCreating && !isFailed && (
                   <Switch
+                    className="hidden md:inline-flex"
                     checked={subscription.isEnabled}
                     onCheckedChange={(checked) => onToggle(subscription.id, checked)}
                     aria-label={subscription.isEnabled ? '禁用订阅' : '启用订阅'}
