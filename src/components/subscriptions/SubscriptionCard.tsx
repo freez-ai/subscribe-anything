@@ -37,12 +37,10 @@ export default function SubscriptionCard({
 
   // Cards in creating state have special click behavior
   const handleCardClick = () => {
-    if (managedStatus === 'manual_creating' || managedStatus === 'managed_creating') {
-      // Both states resume the wizard
+    if (managedStatus === 'manual_creating' || managedStatus === 'managed_creating' || managedStatus === 'failed') {
+      // All creating/failed states resume the wizard
       sessionStorage.setItem('wizard-resume-id', subscription.id);
       router.push('/subscriptions/new');
-    } else if (managedStatus === 'failed') {
-      // Failed — no action, user can only discard via trash button
     } else {
       router.push(`/subscriptions/${subscription.id}`);
     }
@@ -52,7 +50,7 @@ export default function SubscriptionCard({
 
   return (
     <div
-      className={`bg-card border border-border rounded-lg p-4 flex flex-col gap-3 transition-shadow touch-manipulation${managedStatus === 'failed' ? ' cursor-default' : ' cursor-pointer hover:shadow-md'}`}
+      className={`bg-card border border-border rounded-lg p-4 flex flex-col gap-3 transition-shadow touch-manipulation cursor-pointer hover:shadow-md`}
       onClick={handleCardClick}
     >
       {/* Header row */}
@@ -101,7 +99,9 @@ export default function SubscriptionCard({
             </p>
           )}
           {managedStatus === 'failed' && (
-            <p className="text-xs text-muted-foreground mt-0.5">点击查看错误详情</p>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+              {subscription.managedError ?? '创建失败，点击查看详情或使用删除按钮丢弃'}
+            </p>
           )}
         </div>
 

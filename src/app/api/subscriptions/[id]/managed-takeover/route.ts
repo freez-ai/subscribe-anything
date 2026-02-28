@@ -27,8 +27,8 @@ export async function POST(
       return Response.json({ error: 'Not found' }, { status: 404 });
     }
 
-    // If not in managed_creating, return alreadyDone so frontend can handle gracefully
-    if (sub.managedStatus !== 'managed_creating') {
+    // If not in managed_creating or failed, return alreadyDone so frontend can handle gracefully
+    if (sub.managedStatus !== 'managed_creating' && sub.managedStatus !== 'failed') {
       return Response.json({ alreadyDone: true, managedStatus: sub.managedStatus });
     }
 
