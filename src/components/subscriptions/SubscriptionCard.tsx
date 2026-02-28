@@ -93,11 +93,6 @@ export default function SubscriptionCard({
             <h3 className="font-semibold text-base truncate">{subscription.topic}</h3>
 
             {/* Status badges */}
-            {managedStatus === 'manual_creating' && (
-              <Badge variant="outline" className="text-blue-600 border-blue-400/50 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400 text-xs shrink-0">
-                创建中...
-              </Badge>
-            )}
             {managedStatus === 'managed_creating' && (
               <Badge variant="outline" className="text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 text-xs shrink-0 animate-pulse">
                 托管创建中
