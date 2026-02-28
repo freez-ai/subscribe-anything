@@ -6,18 +6,13 @@ import {
   Bot,
   CheckCircle2,
   Loader2,
-  Play,
   RotateCcw,
-  ScrollText,
-  Square,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
-import LLMLogDialog from '@/components/debug/LLMLogDialog';
-import type { LLMCallInfo } from '@/lib/ai/client';
 import type { CollectedItem } from '@/lib/sandbox/contract';
 import type { GeneratedSource, WizardState } from '@/types/wizard';
 
@@ -26,6 +21,8 @@ interface Step3ScriptGenProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
+  isManaged: boolean;
+  onStepComplete?: () => void;
   onManagedCreate?: (generatedSources: GeneratedSource[]) => void;
 }
 
@@ -33,27 +30,35 @@ type SourceStatus =
   | { status: 'skipped' }
   | { status: 'pending' }
   | { status: 'generating'; message?: string }
-  | { status: 'validating'; message?: string }
-  | { status: 'success'; script: string; cronExpression: string; items: CollectedItem[] }
-  | { status: 'unverified'; script: string; cronExpression: string }
+  | { status: 'success'; script: string; cronExpression: string; items: CollectedItem[]; unverified?: boolean }
   | { status: 'failed'; error: string };
 
 function isInProgress(s: SourceStatus | undefined): boolean {
-  return !!s && (s.status === 'pending' || s.status === 'generating' || s.status === 'validating');
+  return !!s && (s.status === 'pending' || s.status === 'generating');
 }
 
-export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, onManagedCreate }: Step3ScriptGenProps) {
+function isTerminal(s: SourceStatus | undefined): boolean {
+  return !!s && (s.status === 'success' || s.status === 'failed' || s.status === 'skipped');
+}
+
+interface LogEntry {
+  type: 'log';
+  id: string;
+  step: string;
+  level: string;
+  message: string;
+  payload: { sourceUrl?: string; script?: string; cronExpression?: string; initialItems?: CollectedItem[]; unverified?: boolean } | null;
+}
+
+export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, isManaged, onStepComplete, onManagedCreate }: Step3ScriptGenProps) {
   const allSources = state.foundSources;
   const selectedSet = new Set(state.selectedIndices);
 
-  // Pre-populate from state.generatedSources (from takeover or previous session)
-  const preGenByUrl = new Map(state.generatedSources.map((s) => [s.url, s]));
-
   const [sourceStatuses, setSourceStatuses] = useState<SourceStatus[]>(
     () => allSources.map((source, i) => {
-      const preGen = preGenByUrl.get(source.url);
+      // Pre-populate from state.generatedSources (takeover)
+      const preGen = state.generatedSources.find((s) => s.url === source.url);
       if (preGen) {
-        // Already generated (from managed pipeline takeover)
         return {
           status: 'success' as const,
           script: preGen.script,
@@ -64,18 +69,13 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
       return selectedSet.has(i) ? { status: 'pending' as const } : { status: 'skipped' as const };
     })
   );
-  const [sourceLLMCalls, setSourceLLMCalls] = useState<LLMCallInfo[][]>(
-    () => allSources.map(() => [])
-  );
-  const [sourceTokens, setSourceTokens] = useState<number[]>(
-    () => allSources.map(() => 0)
-  );
+
   const [userPromptInputs, setUserPromptInputs] = useState<Record<number, string>>({});
   const [retryExpanded, setRetryExpanded] = useState<Set<number>>(new Set());
-  const [logTarget, setLogTarget] = useState<{ idx: number; title: string } | null>(null);
-
-  const abortRefs = useRef<Map<number, AbortController>>(new Map());
-  const countedCallsRef = useRef<Map<number, Set<number>>>(new Map());
+  const abortRef = useRef<AbortController | null>(null);
+  // Track which sources were explicitly reset for retry (so we can ignore old SSE events)
+  const resetSourcesRef = useRef(new Set<string>());
+  const onStepCompleteCalledRef = useRef(false);
 
   const updateStatus = useCallback((globalIdx: number, update: SourceStatus) => {
     setSourceStatuses((prev) => {
@@ -85,110 +85,20 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
     });
   }, []);
 
-  const handleSourceEvent = useCallback(
-    (globalIdx: number, event: Record<string, unknown>) => {
-      const evStatus = event.status as string;
+  const connectSSE = useCallback(() => {
+    const subscriptionId = state.subscriptionId;
+    if (!subscriptionId) return;
 
-      if (evStatus === 'llm_call') {
-        const info = event.llmCall as LLMCallInfo;
-        setSourceLLMCalls((prev) => {
-          const next = [...prev];
-          const calls = next[globalIdx] ?? [];
-          const existingIdx = calls.findIndex((c) => c.callIndex === info.callIndex);
-          next[globalIdx] =
-            existingIdx >= 0
-              ? calls.map((c, i) => (i === existingIdx ? info : c))
-              : [...calls, info];
-          return next;
-        });
-        if (!info.streaming && info.usage?.total) {
-          const counted = countedCallsRef.current.get(globalIdx) ?? new Set<number>();
-          if (!counted.has(info.callIndex)) {
-            counted.add(info.callIndex);
-            countedCallsRef.current.set(globalIdx, counted);
-            setSourceTokens((prev) => {
-              const next = [...prev];
-              next[globalIdx] = (next[globalIdx] ?? 0) + info.usage!.total;
-              return next;
-            });
-          }
-        }
-        return;
-      }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-      if (evStatus === 'generating') {
-        updateStatus(globalIdx, { status: 'generating', message: event.message as string | undefined });
-      } else if (evStatus === 'validating') {
-        updateStatus(globalIdx, { status: 'validating', message: event.message as string | undefined });
-      } else if (evStatus === 'success') {
-        updateStatus(globalIdx, {
-          status: 'success',
-          script: event.script as string,
-          cronExpression: (event.cronExpression as string) || '0 * * * *',
-          items: (event.items as CollectedItem[]) || [],
-        });
-      } else if (evStatus === 'unverified') {
-        updateStatus(globalIdx, {
-          status: 'unverified',
-          script: event.script as string,
-          cronExpression: (event.cronExpression as string) || '0 * * * *',
-        });
-      } else if (evStatus === 'failed') {
-        updateStatus(globalIdx, {
-          status: 'failed',
-          error: (event.error as string) || '生成失败',
-        });
-      }
-    },
-    [updateStatus]
-  );
-
-  const abortSource = useCallback(
-    (globalIdx: number) => {
-      // Set terminal status first so the AbortError catch handler doesn't overwrite it
-      updateStatus(globalIdx, { status: 'failed', error: '已中断' });
-      const ctrl = abortRefs.current.get(globalIdx);
-      abortRefs.current.delete(globalIdx);
-      ctrl?.abort();
-    },
-    [updateStatus]
-  );
-
-  const generateSource = useCallback(
-    async (globalIdx: number, userPrompt?: string) => {
-      const source = allSources[globalIdx];
-      if (!source) return;
-
-      // Abort any prior stream for this source (superseded by this call)
-      abortRefs.current.get(globalIdx)?.abort();
-      const controller = new AbortController();
-      abortRefs.current.set(globalIdx, controller);
-
-      // Reset per-source tracking
-      setSourceLLMCalls((prev) => { const next = [...prev]; next[globalIdx] = []; return next; });
-      setSourceTokens((prev) => { const next = [...prev]; next[globalIdx] = 0; return next; });
-      countedCallsRef.current.delete(globalIdx);
-      // Close the retry panel for this source
-      setRetryExpanded((prev) => { const next = new Set(prev); next.delete(globalIdx); return next; });
-      updateStatus(globalIdx, { status: 'pending' });
-
+    (async () => {
       try {
-        const res = await fetch('/api/wizard/generate-scripts', {
-          method: 'POST',
-          body: JSON.stringify({
-            sources: [{
-              title: source.title,
-              url: source.url,
-              description: source.description,
-              userPrompt: userPrompt?.trim() || undefined,
-            }],
-            criteria: state.criteria || undefined,
-          }),
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch(`/api/subscriptions/${subscriptionId}/stream-progress`, {
           signal: controller.signal,
         });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) return;
 
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
@@ -203,56 +113,102 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
 
           for (const part of parts) {
             const line = part.trim();
-            if (line.startsWith('data: ')) {
-              try {
-                const event = JSON.parse(line.slice(6));
-                // Single-source request: sourceIndex is always 0; map to globalIdx
-                if (event.type === 'source_progress') {
-                  handleSourceEvent(globalIdx, event);
-                }
-              } catch {
-                // ignore malformed SSE events
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6)) as LogEntry | { type: 'done' };
+              if (event.type === 'done') return;
+              if (event.type !== 'log' || event.step !== 'generate_script') continue;
+
+              const logEvent = event as LogEntry;
+              const sourceUrl = logEvent.payload?.sourceUrl;
+              if (!sourceUrl) continue;
+
+              // Ignore events for sources that were reset for retry
+              // (we only ignore events with IDs that were seen BEFORE the reset)
+              const globalIdx = allSources.findIndex((s) => s.url === sourceUrl);
+              if (globalIdx < 0) continue;
+
+              if (logEvent.level === 'info' || logEvent.level === 'progress') {
+                // Only show generating state if source is currently pending/generating
+                setSourceStatuses((prev) => {
+                  const current = prev[globalIdx];
+                  if (current?.status === 'pending' || current?.status === 'generating') {
+                    const next = [...prev];
+                    next[globalIdx] = { status: 'generating', message: logEvent.message };
+                    return next;
+                  }
+                  return prev;
+                });
+              } else if (logEvent.level === 'success' && logEvent.payload?.script) {
+                const p = logEvent.payload;
+                updateStatus(globalIdx, {
+                  status: 'success',
+                  script: p.script!,
+                  cronExpression: p.cronExpression ?? '0 * * * *',
+                  items: p.initialItems ?? [],
+                  unverified: p.unverified,
+                });
+              } else if (logEvent.level === 'error') {
+                setSourceStatuses((prev) => {
+                  const current = prev[globalIdx];
+                  if (current?.status === 'pending' || current?.status === 'generating') {
+                    const next = [...prev];
+                    next[globalIdx] = { status: 'failed', error: logEvent.message };
+                    return next;
+                  }
+                  return prev;
+                });
               }
+            } catch {
+              // ignore parse errors
             }
           }
         }
       } catch (err: unknown) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          // Either intentional abort (status already set by abortSource) or
-          // superseded by a retry (new controller set — old result discarded).
-          return;
-        }
-        // Only report failure if this controller is still the active one
-        if (controller === abortRefs.current.get(globalIdx)) {
-          updateStatus(globalIdx, {
-            status: 'failed',
-            error: err instanceof Error ? err.message : '连接失败',
-          });
-        }
+        if (err instanceof Error && err.name === 'AbortError') return;
+        // On error, mark all pending/generating sources as failed
+        setSourceStatuses((prev) =>
+          prev.map((s) =>
+            s.status === 'pending' || s.status === 'generating'
+              ? { status: 'failed', error: '连接中断' }
+              : s
+          )
+        );
       }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allSources, state.criteria, handleSourceEvent, updateStatus]
-  );
+    })();
+  }, [state.subscriptionId, allSources, updateStatus]);
 
-  // Auto-start selected sources that are not already pre-populated (from takeover)
   useEffect(() => {
-    const preGenUrls = new Set(state.generatedSources.map((s) => s.url));
-    state.selectedIndices.forEach((globalIdx) => {
-      const source = allSources[globalIdx];
-      if (source && !preGenUrls.has(source.url)) {
-        generateSource(globalIdx);
-      }
-    });
+    if (state.subscriptionId) {
+      connectSSE();
+    }
     return () => {
-      abortRefs.current.forEach((ctrl) => ctrl.abort());
+      abortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Check step completion and auto-advance
+  useEffect(() => {
+    if (onStepCompleteCalledRef.current) return;
+    const selectedSources = state.selectedIndices;
+    if (selectedSources.length === 0) return;
+
+    const allTerminated = selectedSources.every((i) => isTerminal(sourceStatuses[i]));
+    if (!allTerminated) return;
+
+    const hasSuccess = selectedSources.some(
+      (i) => sourceStatuses[i]?.status === 'success'
+    );
+    if (!hasSuccess) return;
+
+    onStepCompleteCalledRef.current = true;
+    onStepComplete?.();
+  }, [sourceStatuses, state.selectedIndices, onStepComplete]);
+
   // ── Derived state ────────────────────────────────────────────────────────────
   const anyInProgress = sourceStatuses.some(isInProgress);
-  const allSelectedTerminated = state.selectedIndices.every((i) => !isInProgress(sourceStatuses[i]));
+  const allSelectedTerminated = state.selectedIndices.every((i) => isTerminal(sourceStatuses[i]));
   const allSelectedFailed =
     allSelectedTerminated &&
     state.selectedIndices.length > 0 &&
@@ -270,26 +226,44 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         initialItems: s.items,
         isEnabled: true,
       });
-    } else if (s?.status === 'unverified') {
-      acc.push({
-        title: source.title,
-        url: source.url,
-        description: source.description,
-        script: s.script,
-        cronExpression: s.cronExpression,
-        initialItems: [],
-        isEnabled: true,
-      });
     }
     return acc;
   }, []);
 
   const hasSuccess = successSources.length > 0;
 
+  const handleRetrySource = async (globalIdx: number) => {
+    const source = allSources[globalIdx];
+    if (!source || !state.subscriptionId) return;
+
+    // Reset source status locally
+    updateStatus(globalIdx, { status: 'pending' });
+    setRetryExpanded((prev) => {
+      const next = new Set(prev);
+      next.delete(globalIdx);
+      return next;
+    });
+    resetSourcesRef.current.add(source.url);
+
+    await fetch(`/api/subscriptions/${state.subscriptionId}/retry-source`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sourceUrl: source.url,
+        sourceTitle: source.title,
+        sourceDescription: source.description,
+        userPrompt: userPromptInputs[globalIdx]?.trim() || undefined,
+      }),
+    }).catch(() => {});
+
+    // Reset onStepComplete flag to allow it to fire again after retry
+    onStepCompleteCalledRef.current = false;
+  };
+
   const retryAllFailed = () => {
     state.selectedIndices
       .filter((i) => sourceStatuses[i]?.status === 'failed')
-      .forEach((i) => generateSource(i));
+      .forEach((i) => handleRetrySource(i));
   };
 
   const handleNext = () => {
@@ -305,6 +279,9 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         <p className="text-sm text-muted-foreground">
           AI 正在为已选数据源生成并验证采集脚本，未选中的数据源可手动开始
         </p>
+        {isManaged && !allSelectedTerminated && (
+          <p className="text-xs text-amber-600 mt-1">托管模式：全部完成后将自动进入确认步骤</p>
+        )}
       </div>
 
       <ScrollArea className="h-[52vh] md:h-[48vh]">
@@ -329,10 +306,10 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                       {inProgress && (
                         <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
                       )}
-                      {s.status === 'success' && (
+                      {s.status === 'success' && !s.unverified && (
                         <CheckCircle2 className="h-5 w-5 text-green-500" />
                       )}
-                      {s.status === 'unverified' && (
+                      {s.status === 'success' && s.unverified && (
                         <AlertTriangle className="h-5 w-5 text-yellow-500" />
                       )}
                       {s.status === 'failed' && (
@@ -351,12 +328,12 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                       {s.status === 'pending' && (
                         <p className="text-xs text-muted-foreground">等待中...</p>
                       )}
-                      {(s.status === 'generating' || s.status === 'validating') && (
+                      {s.status === 'generating' && (
                         <p className="text-xs text-muted-foreground">
-                          {s.message ?? (s.status === 'generating' ? '正在生成脚本...' : '正在验证...')}
+                          {s.message ?? '正在生成脚本...'}
                         </p>
                       )}
-                      {s.status === 'success' && (
+                      {s.status === 'success' && !s.unverified && (
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-green-600 dark:text-green-400 font-medium">
                             脚本验证通过
@@ -368,7 +345,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                           )}
                         </div>
                       )}
-                      {s.status === 'unverified' && (
+                      {s.status === 'success' && s.unverified && (
                         <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
                           脚本已生成（沙箱不可用，未验证）
                         </p>
@@ -377,45 +354,9 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                         <p className="text-xs text-destructive mt-1 break-words">{s.error}</p>
                       )}
 
-                      {/* LLM log button */}
-                      {(sourceLLMCalls[globalIdx] ?? []).length > 0 && (
-                        <button
-                          className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={() => setLogTarget({ idx: globalIdx, title: source.title })}
-                        >
-                          <ScrollText className="h-3 w-3" />
-                          查看 LLM 日志（{(sourceTokens[globalIdx] ?? 0).toLocaleString()} tokens）
-                        </button>
-                      )}
-
                       {/* Per-source action buttons */}
                       <div className="mt-2 flex flex-wrap items-start gap-2">
-                        {/* Abort in-progress generation */}
-                        {inProgress && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => abortSource(globalIdx)}
-                          >
-                            <Square className="h-3 w-3 mr-1" />
-                            中断
-                          </Button>
-                        )}
-
-                        {/* Start button (skipped) — directly launch without prompt dialog */}
-                        {s.status === 'skipped' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => generateSource(globalIdx)}
-                          >
-                            <Play className="h-3 w-3 mr-1" />开始生成
-                          </Button>
-                        )}
-
-                        {/* Retry button (failed) — expand panel with optional prompt */}
+                        {/* Retry button (failed) */}
                         {s.status === 'failed' && !expanded && (
                           <Button
                             size="sm"
@@ -429,7 +370,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                           </Button>
                         )}
 
-                        {/* Expanded retry panel with optional user prompt textarea */}
+                        {/* Expanded retry panel */}
                         {expanded && (
                           <div className="w-full flex flex-col gap-2">
                             <Textarea
@@ -448,9 +389,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                               <Button
                                 size="sm"
                                 className="h-7 px-3 text-xs"
-                                onClick={() =>
-                                  generateSource(globalIdx, userPromptInputs[globalIdx])
-                                }
+                                onClick={() => handleRetrySource(globalIdx)}
                               >
                                 开始生成
                               </Button>
@@ -481,7 +420,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         </div>
       </ScrollArea>
 
-      {/* All-failed banner with bulk retry */}
+      {/* All-failed banner */}
       {allSelectedFailed && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-center justify-between gap-3">
           <span>所有已选数据源的脚本生成均失败</span>
@@ -496,7 +435,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         </div>
       )}
 
-      {/* Mobile: fixed bottom bar; Desktop: inline */}
+      {/* Bottom bar */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
         <div className="flex gap-3">
           <Button
@@ -522,12 +461,8 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
             <Button
               variant="outline"
               onClick={() => {
-                // Snapshot current success sources before aborting in-progress ones
-                const currentSuccess = successSources;
-                // Abort all in-progress generations
-                abortRefs.current.forEach((ctrl) => ctrl.abort());
-                abortRefs.current.clear();
-                onManagedCreate(currentSuccess);
+                abortRef.current?.abort();
+                onManagedCreate(successSources);
               }}
               className="flex-none"
               title={anyInProgress
@@ -540,16 +475,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
           )}
         </div>
       </div>
-
-      {/* LLM call log dialog */}
-      {logTarget && (
-        <LLMLogDialog
-          sourceTitle={logTarget.title}
-          calls={sourceLLMCalls[logTarget.idx] ?? []}
-          totalTokens={sourceTokens[logTarget.idx] ?? 0}
-          onClose={() => setLogTarget(null)}
-        />
-      )}
     </div>
   );
 }

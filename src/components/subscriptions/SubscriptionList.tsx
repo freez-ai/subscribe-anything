@@ -6,7 +6,6 @@ import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import SubscriptionCard from './SubscriptionCard';
-import ManagedProgressDrawer from './ManagedProgressDrawer';
 import type { Subscription } from '@/types/db';
 
 export default function SubscriptionList() {
@@ -14,7 +13,6 @@ export default function SubscriptionList() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [progressTarget, setProgressTarget] = useState<string | null>(null);
 
   const fetchSubscriptions = useCallback(async () => {
     try {
@@ -105,11 +103,6 @@ export default function SubscriptionList() {
     }
   }, [subscriptions, toast]);
 
-  const handleTakeover = useCallback(() => {
-    // After takeover, the subscription was deleted — refresh list
-    fetchSubscriptions();
-  }, [fetchSubscriptions]);
-
   if (loading) {
     return (
       <div className="space-y-3">
@@ -147,27 +140,16 @@ export default function SubscriptionList() {
   }
 
   return (
-    <>
-      <div className="space-y-3">
-        {subscriptions.map((sub) => (
-          <SubscriptionCard
-            key={sub.id}
-            subscription={sub}
-            onToggle={handleToggle}
-            onDelete={handleDelete}
-            onOpenProgress={(id) => setProgressTarget(id)}
-            onDiscard={handleDiscard}
-          />
-        ))}
-      </div>
-
-      <ManagedProgressDrawer
-        subscriptionId={progressTarget}
-        isOpen={progressTarget !== null}
-        onClose={() => setProgressTarget(null)}
-        onTakeover={handleTakeover}
-        onDiscard={handleDiscard}
-      />
-    </>
+    <div className="space-y-3">
+      {subscriptions.map((sub) => (
+        <SubscriptionCard
+          key={sub.id}
+          subscription={sub}
+          onToggle={handleToggle}
+          onDelete={handleDelete}
+          onDiscard={handleDiscard}
+        />
+      ))}
+    </div>
   );
 }

@@ -8,7 +8,7 @@
  *   3. complete      — call createSourcesForSubscription, mark subscription active
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { createSourcesForSubscription } from '@/lib/subscriptionCreator';
@@ -29,7 +29,7 @@ export interface ManagedPayload {
 type LogLevel = 'info' | 'progress' | 'success' | 'error';
 type LogStep = 'find_sources' | 'generate_script' | 'complete';
 
-function writeLog(
+export function writeLog(
   subscriptionId: string,
   step: LogStep,
   level: LogLevel,
@@ -51,7 +51,6 @@ function writeLog(
       .run();
   } catch (err) {
     // Silently ignore foreign key constraint errors — subscription was deleted
-    // (user discarded or took over the managed creation)
     if (err && typeof err === 'object' && 'code' in err && err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
       return;
     }
@@ -72,6 +71,262 @@ function isCancelled(subscriptionId: string): boolean {
     return true;
   }
 }
+
+// ── Exported step functions (no isCancelled checks — run to completion) ──────
+
+/**
+ * Run the find_sources step for a subscription.
+ * Writes logs to DB; runs to completion unless subscription is deleted.
+ */
+export async function runFindSourcesStep(
+  subscriptionId: string,
+  topic: string,
+  criteria: string | undefined,
+  userId: string
+): Promise<void> {
+  writeLog(subscriptionId, 'find_sources', 'info', '开始发现数据源...');
+
+  try {
+    const { findSourcesAgent } = await import('@/lib/ai/agents/findSourcesAgent');
+
+    const discovered = await findSourcesAgent(
+      { topic, criteria },
+      (event: unknown) => {
+        const e = event as Record<string, unknown>;
+        if (e.type === 'tool_call' && e.name === 'webSearch') {
+          const args = e.args as { query: string };
+          writeLog(subscriptionId, 'find_sources', 'progress', `搜索：${args.query}`);
+        }
+      },
+      undefined,
+      userId
+    );
+
+    writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    writeLog(subscriptionId, 'find_sources', 'error', `发现数据源失败：${msg}`);
+  }
+}
+
+/**
+ * Run the generate_scripts step for a subscription.
+ * Skips sources that already have a success log.
+ * Writes logs to DB; runs to completion unless subscription is deleted.
+ */
+export async function runGenerateScriptsStep(
+  subscriptionId: string,
+  sources: FoundSource[],
+  criteria: string | undefined,
+  userId: string
+): Promise<void> {
+  if (sources.length === 0) {
+    writeLog(subscriptionId, 'generate_script', 'error', '没有可用的数据源，跳过脚本生成');
+    return;
+  }
+
+  writeLog(subscriptionId, 'generate_script', 'info', `开始为 ${sources.length} 个数据源生成脚本...`);
+
+  // Check which sources already have success logs (for resume scenarios)
+  const completedUrls = getCompletedSourceUrls(subscriptionId);
+
+  const { generateScriptAgent } = await import('@/lib/ai/agents/generateScriptAgent');
+
+  for (const source of sources) {
+    if (completedUrls.has(source.url)) continue; // already done — skip
+
+    writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
+
+    try {
+      const result = await generateScriptAgent(
+        {
+          title: source.title,
+          url: source.url,
+          description: source.description,
+          criteria,
+        },
+        (msg: string) => {
+          writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
+        },
+        undefined,
+        userId
+      );
+
+      if (result.success && result.script) {
+        writeLog(
+          subscriptionId,
+          'generate_script',
+          'success',
+          `"${source.title}" 脚本生成成功，采集到 ${result.initialItems?.length ?? 0} 条数据`,
+          {
+            sourceUrl: source.url,
+            script: result.script,
+            cronExpression: result.cronExpression,
+            initialItems: result.initialItems ?? [],
+          }
+        );
+      } else if (result.sandboxUnavailable && result.script) {
+        writeLog(
+          subscriptionId,
+          'generate_script',
+          'success',
+          `"${source.title}" 脚本已生成（未验证）`,
+          {
+            sourceUrl: source.url,
+            script: result.script,
+            cronExpression: result.cronExpression,
+            initialItems: [],
+            unverified: true,
+          }
+        );
+      } else {
+        writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
+    }
+  }
+}
+
+/**
+ * Retry generating a single source script.
+ * Clears old logs for this sourceUrl before starting.
+ */
+export async function retryGenerateSourceStep(
+  subscriptionId: string,
+  source: FoundSource,
+  criteria: string | undefined,
+  userId: string,
+  userPrompt?: string
+): Promise<void> {
+  writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 重新生成脚本...`, { sourceUrl: source.url });
+
+  try {
+    const { generateScriptAgent } = await import('@/lib/ai/agents/generateScriptAgent');
+
+    const result = await generateScriptAgent(
+      {
+        title: source.title,
+        url: source.url,
+        description: source.description,
+        criteria,
+        userPrompt: userPrompt?.trim() || undefined,
+      },
+      (msg: string) => {
+        writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
+      },
+      undefined,
+      userId
+    );
+
+    if (result.success && result.script) {
+      writeLog(
+        subscriptionId,
+        'generate_script',
+        'success',
+        `"${source.title}" 脚本生成成功，采集到 ${result.initialItems?.length ?? 0} 条数据`,
+        {
+          sourceUrl: source.url,
+          script: result.script,
+          cronExpression: result.cronExpression,
+          initialItems: result.initialItems ?? [],
+        }
+      );
+    } else if (result.sandboxUnavailable && result.script) {
+      writeLog(
+        subscriptionId,
+        'generate_script',
+        'success',
+        `"${source.title}" 脚本已生成（未验证）`,
+        {
+          sourceUrl: source.url,
+          script: result.script,
+          cronExpression: result.cronExpression,
+          initialItems: [],
+          unverified: true,
+        }
+      );
+    } else {
+      writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
+  }
+}
+
+/** Delete all generate_script logs for a specific sourceUrl */
+export function deleteSourceLogs(subscriptionId: string, sourceUrl: string): void {
+  try {
+    const db = getDb();
+    const allLogs = db
+      .select({ id: managedBuildLogs.id, payload: managedBuildLogs.payload })
+      .from(managedBuildLogs)
+      .where(
+        and(
+          eq(managedBuildLogs.subscriptionId, subscriptionId),
+          eq(managedBuildLogs.step, 'generate_script')
+        )
+      )
+      .all();
+
+    const idsToDelete = allLogs
+      .filter((l) => {
+        if (!l.payload) return false;
+        try {
+          const p = JSON.parse(l.payload) as { sourceUrl?: string };
+          return p.sourceUrl === sourceUrl;
+        } catch {
+          return false;
+        }
+      })
+      .map((l) => l.id);
+
+    if (idsToDelete.length > 0) {
+      db.delete(managedBuildLogs)
+        .where(inArray(managedBuildLogs.id, idsToDelete))
+        .run();
+    }
+  } catch (err) {
+    console.error('[managed pipeline] Failed to delete source logs:', err);
+  }
+}
+
+function getCompletedSourceUrls(subscriptionId: string): Set<string> {
+  try {
+    const db = getDb();
+    const logs = db
+      .select({ payload: managedBuildLogs.payload })
+      .from(managedBuildLogs)
+      .where(
+        and(
+          eq(managedBuildLogs.subscriptionId, subscriptionId),
+          eq(managedBuildLogs.step, 'generate_script'),
+          eq(managedBuildLogs.level, 'success')
+        )
+      )
+      .all();
+
+    return new Set(
+      logs
+        .map((l) => {
+          if (!l.payload) return null;
+          try {
+            const p = JSON.parse(l.payload) as { sourceUrl?: string };
+            return p.sourceUrl ?? null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((u): u is string => u !== null)
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+// ── Full managed pipeline (used by "后台托管创建" button) ─────────────────────
 
 export async function runManagedPipeline(
   subscriptionId: string,
@@ -101,8 +356,6 @@ export async function runManagedPipeline(
               const args = e.args as { query: string };
               writeLog(subscriptionId, 'find_sources', 'progress', `搜索：${args.query}`);
             }
-            // NOTE: sources are written AFTER findSourcesAgent returns (see below),
-            // so they're always persisted even if cancelled mid-stream (for watch mode).
           },
           undefined,
           userId
@@ -146,7 +399,7 @@ export async function runManagedPipeline(
         for (const source of sourcesToProcess) {
           if (isCancelled(subscriptionId)) return;
 
-          writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`);
+          writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
 
           try {
             const result = await generateScriptAgent(
@@ -158,7 +411,7 @@ export async function runManagedPipeline(
               },
               (msg: string) => {
                 if (isCancelled(subscriptionId)) return;
-                writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`);
+                writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
               },
               undefined,
               userId
@@ -180,7 +433,7 @@ export async function runManagedPipeline(
                 'generate_script',
                 'success',
                 `"${source.title}" 脚本生成成功，采集到 ${result.initialItems?.length ?? 0} 条数据`,
-                { script: result.script, cronExpression: result.cronExpression }
+                { sourceUrl: source.url, script: result.script, cronExpression: result.cronExpression, initialItems: result.initialItems ?? [] }
               );
             } else if (result.sandboxUnavailable && result.script) {
               const genSource: GeneratedSource = {
@@ -193,14 +446,19 @@ export async function runManagedPipeline(
                 isEnabled: true,
               };
               generatedSources.push(genSource);
-              writeLog(subscriptionId, 'generate_script', 'progress', `"${source.title}" 脚本已生成（沙箱不可用，未验证）`);
+              writeLog(subscriptionId, 'generate_script', 'success', `"${source.title}" 脚本已生成（未验证）`, {
+                sourceUrl: source.url,
+                script: result.script,
+                cronExpression: result.cronExpression,
+                initialItems: [],
+                unverified: true,
+              });
             } else {
-              writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`);
+              writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`);
-            // 单个 source 失败不中断整体流程
+            writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
           }
         }
       }

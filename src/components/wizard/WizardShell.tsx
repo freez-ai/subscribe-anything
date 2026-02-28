@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import type { WizardState } from '@/types/wizard';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -31,8 +32,8 @@ export default function WizardShell() {
   const [state, setState] = useState<WizardState>(DEFAULT_STATE);
   const [mounted, setMounted] = useState(false);
   const [discarding, setDiscarding] = useState(false);
-  // Only auto-start Step2 streaming when coming fresh from Step1 (not on restore/resume)
-  const [step2AutoStart, setStep2AutoStart] = useState(false);
+  // 托管模式：步骤完成后自动前进。true = 托管，false = 手动
+  const [isManaged, setIsManaged] = useState(false);
 
   // Mount: handle new / resume-by-id / session-restore
   useEffect(() => {
@@ -43,7 +44,6 @@ export default function WizardShell() {
     sessionStorage.removeItem('wizard-resume-id');
 
     if (isNew) {
-      // Fresh "New Subscription" click: discard any leftover wizard session
       sessionStorage.removeItem(STORAGE_KEY);
       setMounted(true);
       return;
@@ -53,11 +53,15 @@ export default function WizardShell() {
       // Resume from DB via subscription id
       fetch(`/api/subscriptions/${resumeId}`)
         .then((r) => r.json())
-        .then((sub) => {
-          if (sub.wizardStateJson) {
+        .then(async (sub) => {
+          if (sub.managedStatus === 'managed_creating') {
+            // Take over from managed_creating: switch to manual_creating and restart current step
+            await handleManagedTakeover(resumeId);
+          } else if (sub.wizardStateJson) {
             try {
               const parsed = JSON.parse(sub.wizardStateJson) as WizardState;
               setState(parsed);
+              setIsManaged(false);
             } catch { /* ignore */ }
           }
         })
@@ -66,7 +70,7 @@ export default function WizardShell() {
       return;
     }
 
-    // Refresh or back-forward: resume in-progress wizard from sessionStorage
+    // Refresh or back-forward: resume from sessionStorage
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -77,7 +81,58 @@ export default function WizardShell() {
       // ignore parse errors
     }
     setMounted(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Take over a managed_creating subscription and restart its current step
+  const handleManagedTakeover = async (subscriptionId: string) => {
+    try {
+      const takeoverRes = await fetch(`/api/subscriptions/${subscriptionId}/managed-takeover`, {
+        method: 'POST',
+      });
+      const takeover = await takeoverRes.json();
+
+      if (takeover.alreadyDone) {
+        // Pipeline already completed/failed — just go to list
+        return;
+      }
+
+      const foundSources: FoundSource[] = takeover.foundSources ?? [];
+      const resumeStep: 2 | 3 = takeover.resumeStep ?? 2;
+
+      const newState: WizardState = {
+        step: resumeStep,
+        topic: takeover.topic ?? '',
+        criteria: takeover.criteria ?? '',
+        foundSources,
+        selectedIndices: foundSources.map((_, i) => i),
+        generatedSources: takeover.generatedSources ?? [],
+        subscriptionId,
+      };
+      setState(newState);
+      setIsManaged(true);
+
+      if (resumeStep === 2) {
+        // find_sources might still be writing its log (race), or might have already completed.
+        // In watch mode (takeover.watchMode = true), old pipeline is still running find_sources.
+        // Just connect SSE to wait for the result — DON'T restart if old pipeline is running.
+        if (!takeover.watchMode) {
+          // find_sources was already completed but pipeline stopped before generate_scripts
+          // Nothing to restart for step 2 — show cached results
+        }
+        // Either way, Step2 will connect to SSE and pick up whatever comes
+      } else if (resumeStep === 3) {
+        // Restart generate_scripts for any sources that haven't been processed yet
+        await fetch(`/api/subscriptions/${subscriptionId}/run-step`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ step: 'generate_scripts', sources: foundSources }),
+        });
+      }
+
+      persistToDb({ ...newState });
+    } catch { /* ignore */ }
+  };
 
   // Persist state on every change
   useEffect(() => {
@@ -103,7 +158,7 @@ export default function WizardShell() {
     setState((prev) => ({ ...prev, ...updates }));
   };
 
-  // Step1 next: create bare subscription first
+  // Step1 next: create bare subscription and start find_sources in background
   const handleStep1Next = async (topic: string, criteria: string) => {
     try {
       const res = await fetch('/api/subscriptions', {
@@ -120,12 +175,42 @@ export default function WizardShell() {
         subscriptionId: data.id,
       };
       setState(newState);
-      setStep2AutoStart(true);
       persistToDb(newState);
+
+      // Start find_sources in background
+      await fetch(`/api/subscriptions/${data.id}/run-step`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: 'find_sources' }),
+      });
     } catch {
       // Fallback: advance without DB persistence
       setState((prev) => ({ ...prev, step: 2, topic, criteria }));
-      setStep2AutoStart(true);
+    }
+  };
+
+  // Step2 next: start generate_scripts in background and advance
+  const handleStep2Next = async (selectedSources: FoundSource[]) => {
+    // Save selected sources to state
+    const selectedIndices = state.foundSources
+      .map((s, i) => (selectedSources.some((sel) => sel.url === s.url) ? i : -1))
+      .filter((i) => i >= 0);
+
+    const newState: WizardState = {
+      ...state,
+      step: 3,
+      selectedIndices,
+    };
+    setState(newState);
+    persistToDb(newState);
+
+    // Start generate_scripts in background if subscriptionId exists
+    if (state.subscriptionId) {
+      await fetch(`/api/subscriptions/${state.subscriptionId}/run-step`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: 'generate_scripts', sources: selectedSources }),
+      }).catch(() => {});
     }
   };
 
@@ -143,7 +228,6 @@ export default function WizardShell() {
   const handleBack = () => {
     setState((prev) => {
       const newStep = Math.max(prev.step - 1, 1) as WizardState['step'];
-      // Returning to step 1 means the topic/criteria may change — invalidate source cache
       const newState = newStep === 1
         ? { ...prev, step: newStep, foundSources: [], selectedIndices: [] }
         : { ...prev, step: newStep };
@@ -196,7 +280,6 @@ export default function WizardShell() {
           startStep: data.startStep,
           foundSources: data.foundSources,
           generatedSources: data.generatedSources,
-          // Reuse existing subscription (switches manual_creating → managed_creating)
           existingSubscriptionId: state.subscriptionId,
         }),
       });
@@ -207,6 +290,19 @@ export default function WizardShell() {
     } catch { /* ignore */ }
 
     router.push('/subscriptions');
+  };
+
+  // Toggle managed/manual mode — updates DB status but does not affect running background tasks
+  const handleToggleManaged = async (checked: boolean) => {
+    setIsManaged(checked);
+    if (!state.subscriptionId) return;
+    fetch(`/api/subscriptions/${state.subscriptionId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        managedStatus: checked ? 'managed_creating' : 'manual_creating',
+      }),
+    }).catch(() => {});
   };
 
   if (!mounted) {
@@ -229,7 +325,7 @@ export default function WizardShell() {
       {/* Progress Bar */}
       <div className="px-4 pt-4 pb-2 md:px-6 md:pt-6">
         {isMobile ? (
-          // Mobile: compact dots with Discard button
+          // Mobile: compact dots with controls
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {STEP_LABELS.map((_, idx) => {
@@ -262,21 +358,35 @@ export default function WizardShell() {
                 );
               })}
             </div>
-            {state.step > 1 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
-                onClick={handleDiscard}
-                disabled={discarding}
-                aria-label="丢弃并返回"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Managed toggle (Step2 / Step3 only) */}
+              {(state.step === 2 || state.step === 3) && state.subscriptionId && (
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    checked={isManaged}
+                    onCheckedChange={handleToggleManaged}
+                    aria-label="托管模式"
+                    className="scale-90"
+                  />
+                  <span className="text-xs text-muted-foreground">托管</span>
+                </div>
+              )}
+              {state.step > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
+                  onClick={handleDiscard}
+                  disabled={discarding}
+                  aria-label="丢弃并返回"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
-          // Desktop: steps with labels + Discard button
+          // Desktop: steps with labels + controls
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center flex-1">
               {STEP_LABELS.map((label, idx) => {
@@ -335,18 +445,33 @@ export default function WizardShell() {
                 );
               })}
             </div>
-            {state.step > 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-destructive flex-shrink-0 mb-4"
-                onClick={handleDiscard}
-                disabled={discarding}
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                丢弃
-              </Button>
-            )}
+            <div className="flex items-center gap-3 mb-4">
+              {/* Managed toggle (Step2 / Step3 only) */}
+              {(state.step === 2 || state.step === 3) && state.subscriptionId && (
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={isManaged}
+                    onCheckedChange={handleToggleManaged}
+                    aria-label="托管模式"
+                  />
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">
+                    托管模式
+                  </span>
+                </div>
+              )}
+              {state.step > 1 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-destructive flex-shrink-0"
+                  onClick={handleDiscard}
+                  disabled={discarding}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  丢弃
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -358,7 +483,6 @@ export default function WizardShell() {
             {...stepProps}
             onStep1Next={handleStep1Next}
             onManagedCreate={async (topic, criteria) => {
-              // Step1 managed create: update local state then fire pipeline
               setState((prev) => ({ ...prev, topic, criteria }));
               try {
                 await fetch('/api/subscriptions/managed', {
@@ -375,8 +499,12 @@ export default function WizardShell() {
         {state.step === 2 && (
           <Step2FindSources
             {...stepProps}
-            autoStart={step2AutoStart}
-            watchSubscriptionId={state.watchingManagedId}
+            isManaged={isManaged}
+            onStepComplete={(sources) => {
+              if (isManaged) {
+                handleStep2Next(sources);
+              }
+            }}
             onManagedCreate={(foundSources) =>
               handleManagedCreate({
                 startStep: foundSources.length > 0 ? 'generate_scripts' : 'find_sources',
@@ -388,6 +516,12 @@ export default function WizardShell() {
         {state.step === 3 && (
           <Step3ScriptGen
             {...stepProps}
+            isManaged={isManaged}
+            onStepComplete={() => {
+              if (isManaged) {
+                handleNext();
+              }
+            }}
             onManagedCreate={(generatedSources) =>
               handleManagedCreate({ startStep: 'complete', generatedSources })
             }

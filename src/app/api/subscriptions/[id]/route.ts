@@ -60,6 +60,15 @@ export async function PATCH(
     if (typeof body.wizardStateJson === 'string' && existing.managedStatus === 'manual_creating') {
       patch.wizardStateJson = body.wizardStateJson;
     }
+    // Allow toggling managedStatus between manual_creating and managed_creating.
+    // This does NOT affect any background tasks that are currently running.
+    if (
+      typeof body.managedStatus === 'string' &&
+      (existing.managedStatus === 'manual_creating' || existing.managedStatus === 'managed_creating') &&
+      (body.managedStatus === 'manual_creating' || body.managedStatus === 'managed_creating')
+    ) {
+      patch.managedStatus = body.managedStatus;
+    }
 
     db.update(subscriptions).set(patch).where(eq(subscriptions.id, id)).run();
 

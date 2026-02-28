@@ -2,12 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Bot, ExternalLink, Loader2, Search, ScrollText } from 'lucide-react';
+import { ExternalLink, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import LLMLogDialog from '@/components/debug/LLMLogDialog';
-import type { LLMCallInfo } from '@/lib/ai/client';
+import { Bot as BotIcon } from 'lucide-react';
 import type { FoundSource, WizardState } from '@/types/wizard';
 
 interface Step2FindSourcesProps {
@@ -15,13 +14,18 @@ interface Step2FindSourcesProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
+  isManaged: boolean;
+  onStepComplete?: (sources: FoundSource[]) => void;
   onManagedCreate?: (foundSources: FoundSource[]) => void;
-  // When true (default), auto-start streaming if no cached sources.
-  // Set to false when resuming from takeover/restore so the user can choose.
-  autoStart?: boolean;
-  // When set, poll this subscription's managed-progress logs instead of streaming.
-  // Used for seamless takeover during find_sources phase.
-  watchSubscriptionId?: string;
+}
+
+interface LogEntry {
+  type: 'log';
+  id: string;
+  step: string;
+  level: string;
+  message: string;
+  payload: unknown;
 }
 
 function defaultSelection(sources: FoundSource[]): Set<number> {
@@ -38,15 +42,11 @@ export default function Step2FindSources({
   onStateChange,
   onNext,
   onBack,
+  isManaged,
+  onStepComplete,
   onManagedCreate,
-  autoStart = true,
-  watchSubscriptionId,
 }: Step2FindSourcesProps) {
   const [searchQueries, setSearchQueries] = useState<string[]>([]);
-  const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
-  const [totalTokens, setTotalTokens] = useState(0);
-  const [showLog, setShowLog] = useState(false);
-  const countedCallsRef = useRef(new Set<number>());
   const [sources, setSources] = useState<FoundSource[]>(
     state.foundSources.length > 0 ? state.foundSources : []
   );
@@ -55,219 +55,149 @@ export default function Step2FindSources({
     if (state.foundSources.length > 0) return defaultSelection(state.foundSources);
     return new Set();
   });
-  // started: true if streaming/watching has been initiated, or sources already exist
-  const [started, setStarted] = useState(
-    autoStart || !!watchSubscriptionId || state.foundSources.length > 0
-  );
-  const [isStreaming, setIsStreaming] = useState(
-    (state.foundSources.length === 0 && autoStart) || !!watchSubscriptionId
-  );
+  const [isStreaming, setIsStreaming] = useState(false);
   const [isDone, setIsDone] = useState(state.foundSources.length > 0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSearchProviderError, setIsSearchProviderError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const watchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const seenQueriesRef = useRef(new Set<string>());
 
-  // ── Watch mode: poll managed-progress for find_sources completion ─────────
-  useEffect(() => {
-    if (!watchSubscriptionId) return;
+  const connectSSE = () => {
+    const subscriptionId = state.subscriptionId;
+    if (!subscriptionId) return;
 
-    let seenQueries = new Set<string>();
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/subscriptions/${watchSubscriptionId}/managed-progress`);
-        if (!res.ok) return;
-        const data: {
-          status: string | null;
-          logs: { step: string; level: string; message: string; payload: unknown }[];
-        } = await res.json();
-
-        // Extract search queries from progress logs (message format: '搜索：<query>')
-        const newQueries: string[] = [];
-        for (const log of data.logs) {
-          if (log.step === 'find_sources' && log.level === 'progress' && log.message.startsWith('搜索：')) {
-            const q = log.message.slice(3);
-            if (!seenQueries.has(q)) {
-              seenQueries.add(q);
-              newQueries.push(q);
-            }
-          }
-        }
-        if (newQueries.length > 0) {
-          setSearchQueries((prev) => [...prev, ...newQueries]);
-        }
-
-        // Check for find_sources success log (contains sources payload)
-        const successLog = data.logs.find(
-          (l) => l.step === 'find_sources' && l.level === 'success' && Array.isArray(l.payload)
-        );
-        if (successLog) {
-          const allSources = successLog.payload as FoundSource[];
-          const sel = defaultSelection(allSources);
-          setSources(allSources);
-          setCheckedIndices(sel);
-          setIsDone(true);
-          setIsStreaming(false);
-          // Persist sources into wizard state and clear watch mode
-          onStateChange({
-            foundSources: allSources,
-            selectedIndices: Array.from(sel).sort((a, b) => a - b),
-            watchingManagedId: undefined,
-          });
-          if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
-          return;
-        }
-
-        // Check for error log
-        const errorLog = data.logs.find(
-          (l) => l.step === 'find_sources' && l.level === 'error'
-        );
-        if (errorLog) {
-          setErrorMessage(errorLog.message);
-          setIsStreaming(false);
-          onStateChange({ watchingManagedId: undefined });
-          if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
-        }
-      } catch { /* ignore */ }
-    };
-
-    poll();
-    watchIntervalRef.current = setInterval(poll, 1500);
-    return () => {
-      if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchSubscriptionId]);
-
-  // ── Normal streaming mode ─────────────────────────────────────────────────
-  const startStream = async () => {
-    if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
-    setSearchQueries([]);
-    setLlmCalls([]);
-    setTotalTokens(0);
-    countedCallsRef.current.clear();
-    setSources([]);
-    setCheckedIndices(new Set());
-    setErrorMessage('');
-    setIsSearchProviderError(false);
-    setIsStreaming(true);
-    setIsDone(false);
-
+    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
-    try {
-      const res = await fetch('/api/wizard/find-sources', {
-        method: 'POST',
-        body: JSON.stringify({ topic: state.topic, criteria: state.criteria }),
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-      });
+    setIsStreaming(true);
+    setErrorMessage('');
+    setIsSearchProviderError(false);
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => 'Unknown error');
-        throw new Error(errText || `HTTP ${res.status}`);
-      }
+    (async () => {
+      try {
+        const res = await fetch(`/api/subscriptions/${subscriptionId}/stream-progress`, {
+          signal: controller.signal,
+        });
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() ?? '';
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-        for (const part of parts) {
-          const line = part.trim();
-          if (line.startsWith('data: ')) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() ?? '';
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data: ')) continue;
             try {
-              const event = JSON.parse(line.slice(6));
-              handleEvent(event);
+              const event = JSON.parse(line.slice(6)) as LogEntry | { type: 'done'; reason?: string };
+
+              if (event.type === 'done') {
+                setIsStreaming(false);
+                return;
+              }
+
+              if (event.type !== 'log' || event.step !== 'find_sources') continue;
+
+              // Search query progress
+              if (event.level === 'progress' && event.message.startsWith('搜索：')) {
+                const q = event.message.slice(3);
+                if (!seenQueriesRef.current.has(q)) {
+                  seenQueriesRef.current.add(q);
+                  setSearchQueries((prev) => [...prev, q]);
+                }
+              }
+
+              // Success: sources found
+              if (event.level === 'success' && Array.isArray(event.payload)) {
+                const allSources = event.payload as FoundSource[];
+                const sel = defaultSelection(allSources);
+                setSources(allSources);
+                setCheckedIndices(sel);
+                setIsDone(true);
+                setIsStreaming(false);
+                onStateChange({
+                  foundSources: allSources,
+                  selectedIndices: Array.from(sel).sort((a, b) => a - b),
+                });
+                const selectedSources = allSources.filter((_, i) => sel.has(i));
+                onStepComplete?.(selectedSources);
+                return;
+              }
+
+              // Error
+              if (event.level === 'error') {
+                setErrorMessage(event.message);
+                if (
+                  event.message.toLowerCase().includes('search provider') ||
+                  event.message.toLowerCase().includes('no search') ||
+                  event.message.toLowerCase().includes('搜索供应商')
+                ) {
+                  setIsSearchProviderError(true);
+                }
+                setIsStreaming(false);
+                return;
+              }
             } catch {
               // ignore parse errors
             }
           }
         }
-      }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      setErrorMessage(msg);
-      if (
-        msg.toLowerCase().includes('search provider') ||
-        msg.toLowerCase().includes('no search') ||
-        msg.toLowerCase().includes('搜索供应商')
-      ) {
-        setIsSearchProviderError(true);
-      }
-    } finally {
-      setIsStreaming(false);
-    }
-  };
-
-  const handleEvent = (event: Record<string, unknown>) => {
-    switch (event.type) {
-      case 'tool_call':
-        if (event.name === 'webSearch') {
-          const args = event.args as { query: string };
-          setSearchQueries((prev) => [...prev, args.query]);
-        }
-        break;
-      case 'sources': {
-        const foundSources = event.sources as FoundSource[];
-        setSources(foundSources);
-        setCheckedIndices(defaultSelection(foundSources));
-        break;
-      }
-      case 'done':
-        setIsDone(true);
-        break;
-      case 'llm_call': {
-        const info = event as unknown as LLMCallInfo;
-        setLlmCalls((prev) => {
-          const existingIdx = prev.findIndex((c) => c.callIndex === info.callIndex);
-          if (existingIdx >= 0) {
-            const next = [...prev];
-            next[existingIdx] = info;
-            return next;
-          }
-          return [...prev, info];
-        });
-        if (!info.streaming && info.usage?.total && !countedCallsRef.current.has(info.callIndex)) {
-          countedCallsRef.current.add(info.callIndex);
-          setTotalTokens((prev) => prev + info.usage!.total);
-        }
-        break;
-      }
-      case 'error': {
-        const msg = event.message as string;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        const msg = err instanceof Error ? err.message : '连接失败';
         setErrorMessage(msg);
         if (
           msg.toLowerCase().includes('search provider') ||
-          msg.toLowerCase().includes('no search') ||
           msg.toLowerCase().includes('搜索供应商')
         ) {
           setIsSearchProviderError(true);
         }
-        break;
+        setIsStreaming(false);
       }
-    }
+    })();
   };
 
+  // Connect to SSE on mount if we have a subscriptionId and sources not yet cached
   useEffect(() => {
-    // Auto-start only when coming from Step1 (autoStart=true), no watch mode, no cached sources
-    if (state.foundSources.length === 0 && autoStart && !watchSubscriptionId) {
-      startStream();
+    if (state.foundSources.length === 0 && state.subscriptionId) {
+      connectSSE();
     }
     return () => {
       abortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleRetry = async () => {
+    if (!state.subscriptionId) return;
+    setIsDone(false);
+    setSources([]);
+    setCheckedIndices(new Set());
+    setSearchQueries([]);
+    seenQueriesRef.current.clear();
+    setErrorMessage('');
+    setIsSearchProviderError(false);
+
+    // Restart find_sources step in background (clears old logs)
+    await fetch(`/api/subscriptions/${state.subscriptionId}/run-step`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: 'find_sources' }),
+    }).catch(() => {});
+
+    connectSSE();
+  };
 
   const toggleIndex = (idx: number) => {
     setCheckedIndices((prev) => {
@@ -287,17 +217,16 @@ export default function Step2FindSources({
   };
 
   const handleNext = () => {
+    const selected = Array.from(checkedIndices).sort((a, b) => a - b);
     onStateChange({
       foundSources: sources,
-      selectedIndices: Array.from(checkedIndices).sort((a, b) => a - b),
+      selectedIndices: selected,
     });
     onNext();
   };
 
   const selectedCount = checkedIndices.size;
   const recommendedCount = sources.filter((s) => s.recommended).length;
-  // During watch mode polling, disable managed button to avoid pipeline conflicts
-  const isWatching = !!watchSubscriptionId && isStreaming;
 
   return (
     <div className="flex flex-col gap-4 pt-4">
@@ -312,8 +241,8 @@ export default function Step2FindSources({
             </>
           )}
         </p>
-        {isWatching && (
-          <p className="text-xs text-amber-600 mt-1">正在从托管进度中接管，等待 AI 完成搜索…</p>
+        {isManaged && isStreaming && (
+          <p className="text-xs text-amber-600 mt-1">托管模式：完成后将自动进入下一步</p>
         )}
       </div>
 
@@ -339,17 +268,6 @@ export default function Step2FindSources({
         </div>
       )}
 
-      {/* LLM log button (only for direct streaming, not watch mode) */}
-      {llmCalls.length > 0 && (
-        <button
-          className="self-start flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-          onClick={() => setShowLog(true)}
-        >
-          <ScrollText className="h-3 w-3" />
-          查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
-        </button>
-      )}
-
       {/* Error state */}
       {errorMessage && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
@@ -364,19 +282,9 @@ export default function Step2FindSources({
               配置后重试
             </p>
           )}
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => { setStarted(true); startStream(); }}>
+          <Button variant="outline" size="sm" className="mt-3" onClick={handleRetry}>
             重试
           </Button>
-        </div>
-      )}
-
-      {/* Initial state: not yet started (restored without watch mode) */}
-      {!started && !isStreaming && !isDone && !errorMessage && (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <p>点击"开始分析"让 AI 发现合适的数据源</p>
-          {onManagedCreate && (
-            <p className="text-xs">或选择"后台托管创建"让系统在后台自动完成所有步骤</p>
-          )}
         </div>
       )}
 
@@ -455,12 +363,20 @@ export default function Step2FindSources({
       )}
 
       {/* Empty state after done */}
-      {started && !isStreaming && isDone && sources.length === 0 && !errorMessage && (
+      {!isStreaming && isDone && sources.length === 0 && !errorMessage && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-3">
           <p>没有找到数据源</p>
-          <Button variant="outline" size="sm" onClick={() => { setStarted(true); startStream(); }}>
+          <Button variant="outline" size="sm" onClick={handleRetry}>
             重试
           </Button>
+        </div>
+      )}
+
+      {/* Initial loading state */}
+      {isStreaming && sources.length === 0 && searchQueries.length === 0 && !errorMessage && (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <p>AI 正在搜索合适的数据源...</p>
         </div>
       )}
 
@@ -470,58 +386,39 @@ export default function Step2FindSources({
           <Button variant="outline" onClick={onBack} disabled={isStreaming} className="flex-none">
             返回
           </Button>
-          {started ? (
-            <Button
-              onClick={handleNext}
-              disabled={!isDone || selectedCount === 0}
-              className="flex-1 md:flex-none"
-            >
-              {!isDone && !errorMessage ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {isWatching ? '等待结果...' : '分析中'}
-                </>
-              ) : selectedCount > 0 ? (
-                `下一步（${selectedCount} 个源）`
-              ) : (
-                '下一步'
-              )}
-            </Button>
-          ) : (
-            <Button
-              onClick={() => { setStarted(true); startStream(); }}
-              className="flex-1 md:flex-none"
-            >
-              开始分析
-            </Button>
-          )}
-          {onManagedCreate && !isWatching && (
+          <Button
+            onClick={handleNext}
+            disabled={!isDone || selectedCount === 0}
+            className="flex-1 md:flex-none"
+          >
+            {isStreaming ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                分析中
+              </>
+            ) : selectedCount > 0 ? (
+              `下一步（${selectedCount} 个源）`
+            ) : (
+              '下一步'
+            )}
+          </Button>
+          {onManagedCreate && (
             <Button
               variant="outline"
               onClick={() => {
                 abortRef.current?.abort();
-                if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
                 const selected = Array.from(checkedIndices).map((i) => sources[i]).filter(Boolean);
                 onManagedCreate(selected.length > 0 ? selected : sources);
               }}
               className="flex-none"
               title="AI 自动完成脚本生成，在后台创建订阅"
             >
-              <Bot className="h-4 w-4 mr-1.5" />
+              <BotIcon className="h-4 w-4 mr-1.5" />
               {isStreaming ? '转后台托管' : '后台托管创建'}
             </Button>
           )}
         </div>
       </div>
-      {/* LLM log dialog */}
-      {showLog && (
-        <LLMLogDialog
-          sourceTitle={`发现源：${state.topic}`}
-          calls={llmCalls}
-          totalTokens={totalTokens}
-          onClose={() => setShowLog(false)}
-        />
-      )}
     </div>
   );
 }

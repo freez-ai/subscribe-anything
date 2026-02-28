@@ -11,7 +11,6 @@ interface SubscriptionCardProps {
   subscription: Subscription;
   onToggle: (id: string, isEnabled: boolean) => void;
   onDelete: (id: string) => void;
-  onOpenProgress?: (id: string) => void;
   onDiscard?: (id: string) => void;
 }
 
@@ -31,7 +30,6 @@ export default function SubscriptionCard({
   subscription,
   onToggle,
   onDelete,
-  onOpenProgress,
   onDiscard,
 }: SubscriptionCardProps) {
   const router = useRouter();
@@ -39,12 +37,12 @@ export default function SubscriptionCard({
 
   // Cards in creating state have special click behavior
   const handleCardClick = () => {
-    if (managedStatus === 'manual_creating') {
-      // Resume the wizard
+    if (managedStatus === 'manual_creating' || managedStatus === 'managed_creating') {
+      // Both states resume the wizard
       sessionStorage.setItem('wizard-resume-id', subscription.id);
       router.push('/subscriptions/new');
-    } else if (managedStatus === 'managed_creating' || managedStatus === 'failed') {
-      onOpenProgress?.(subscription.id);
+    } else if (managedStatus === 'failed') {
+      // Failed — no action, user can only discard via trash button
     } else {
       router.push(`/subscriptions/${subscription.id}`);
     }
@@ -54,7 +52,7 @@ export default function SubscriptionCard({
 
   return (
     <div
-      className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3 cursor-pointer hover:shadow-md transition-shadow touch-manipulation"
+      className={`bg-card border border-border rounded-lg p-4 flex flex-col gap-3 transition-shadow touch-manipulation${managedStatus === 'failed' ? ' cursor-default' : ' cursor-pointer hover:shadow-md'}`}
       onClick={handleCardClick}
     >
       {/* Header row */}
@@ -96,7 +94,7 @@ export default function SubscriptionCard({
             <p className="text-xs text-muted-foreground mt-0.5">点击继续创建</p>
           )}
           {managedStatus === 'managed_creating' && (
-            <p className="text-xs text-muted-foreground mt-0.5">点击查看进度</p>
+            <p className="text-xs text-muted-foreground mt-0.5">点击继续创建</p>
           )}
           {managedStatus === 'failed' && (
             <p className="text-xs text-muted-foreground mt-0.5">点击查看错误详情</p>
