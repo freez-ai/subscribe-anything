@@ -43,18 +43,16 @@ export function abortSource(subscriptionId: string, sourceUrl: string): void {
 /**
  * Abort ALL running source generation tasks for a subscription.
  * Called when managed pipeline takes over from run-step tasks.
+ * Does NOT write error logs — the managed pipeline will handle these sources.
  */
 export function abortAllSources(subscriptionId: string): void {
   const prefix = `${subscriptionId}:`;
   for (const [key, controller] of sourceAbortControllers) {
     if (key.startsWith(prefix)) {
+      abortedSourceKeys.add(key);
       controller.abort();
       sourceAbortControllers.delete(key);
     }
-  }
-  // Also mark all as aborted so any leftover callbacks are ignored
-  for (const key of abortedSourceKeys) {
-    // Keep existing entries — they don't hurt
   }
 }
 
@@ -79,6 +77,16 @@ export function registerSourceAbort(subscriptionId: string, sourceUrl: string): 
  */
 export function unregisterSourceAbort(subscriptionId: string, sourceUrl: string): void {
   sourceAbortControllers.delete(`${subscriptionId}:${sourceUrl}`);
+}
+
+/** Check if an error is an abort-related error (standard AbortError or OpenAI SDK abort). */
+function isAbortError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.name === 'AbortError') return true;
+  // OpenAI SDK wraps abort as APIUserAbortError or includes "aborted" in the message
+  if (err.name === 'APIUserAbortError') return true;
+  if (err.message.toLowerCase().includes('abort')) return true;
+  return false;
 }
 
 export type ManagedStartStep = 'find_sources' | 'generate_scripts' | 'complete';
@@ -274,7 +282,7 @@ export async function runGenerateScriptsStep(
           unregisterSourceAbort(subscriptionId, source.url);
           if (abortedSourceKeys.has(abortKey)) return;
           // AbortError from signal — already handled by abortSource writing the error log
-          if (err instanceof Error && err.name === 'AbortError') return;
+          if (isAbortError(err)) return;
           const msg = err instanceof Error ? err.message : String(err);
           writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
         }
@@ -354,7 +362,7 @@ export async function retryGenerateSourceStep(
     unregisterSourceAbort(subscriptionId, source.url);
     const abortKey = `${subscriptionId}:${source.url}`;
     if (abortedSourceKeys.has(abortKey)) return;
-    if (err instanceof Error && err.name === 'AbortError') return;
+    if (isAbortError(err)) return;
     const msg = err instanceof Error ? err.message : String(err);
     writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
   }
@@ -775,7 +783,7 @@ export async function runManagedPipeline(
               } catch (err) {
                 unregisterSourceAbort(subscriptionId, source.url);
                 if (isCancelled(subscriptionId)) return;
-                if (err instanceof Error && err.name === 'AbortError') return;
+                if (isAbortError(err)) return;
                 const msg = err instanceof Error ? err.message : String(err);
                 writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
               }
