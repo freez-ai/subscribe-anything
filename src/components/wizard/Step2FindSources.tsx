@@ -14,8 +14,7 @@ interface Step2FindSourcesProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
-  isManaged: boolean;
-  onStepComplete?: (sources: FoundSource[]) => void;
+  onStep2Next?: (selectedSources: FoundSource[]) => void;
   onManagedCreate?: (foundSources: FoundSource[]) => void;
 }
 
@@ -40,10 +39,8 @@ function defaultSelection(sources: FoundSource[]): Set<number> {
 export default function Step2FindSources({
   state,
   onStateChange,
-  onNext,
   onBack,
-  isManaged,
-  onStepComplete,
+  onStep2Next,
   onManagedCreate,
 }: Step2FindSourcesProps) {
   const [searchQueries, setSearchQueries] = useState<string[]>([]);
@@ -130,8 +127,6 @@ export default function Step2FindSources({
                   foundSources: allSources,
                   selectedIndices: Array.from(sel).sort((a, b) => a - b),
                 });
-                const selectedSources = allSources.filter((_, i) => sel.has(i));
-                onStepComplete?.(selectedSources);
                 return;
               }
 
@@ -217,12 +212,17 @@ export default function Step2FindSources({
   };
 
   const handleNext = () => {
-    const selected = Array.from(checkedIndices).sort((a, b) => a - b);
+    const selectedSources = Array.from(checkedIndices)
+      .sort((a, b) => a - b)
+      .map((i) => sources[i])
+      .filter(Boolean);
     onStateChange({
       foundSources: sources,
-      selectedIndices: selected,
+      selectedIndices: Array.from(checkedIndices).sort((a, b) => a - b),
     });
-    onNext();
+    if (onStep2Next) {
+      onStep2Next(selectedSources);
+    }
   };
 
   const selectedCount = checkedIndices.size;
@@ -241,9 +241,6 @@ export default function Step2FindSources({
             </>
           )}
         </p>
-        {isManaged && isStreaming && (
-          <p className="text-xs text-amber-600 mt-1">托管模式：完成后将自动进入下一步</p>
-        )}
       </div>
 
       {/* Search progress pills */}
@@ -383,7 +380,7 @@ export default function Step2FindSources({
       {/* Bottom bar */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} disabled={isStreaming} className="flex-none">
+          <Button variant="outline" onClick={onBack} className="flex-none">
             返回
           </Button>
           <Button

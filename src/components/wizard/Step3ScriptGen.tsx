@@ -21,8 +21,6 @@ interface Step3ScriptGenProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
-  isManaged: boolean;
-  onStepComplete?: () => void;
   onManagedCreate?: (generatedSources: GeneratedSource[]) => void;
 }
 
@@ -50,7 +48,7 @@ interface LogEntry {
   payload: { sourceUrl?: string; script?: string; cronExpression?: string; initialItems?: CollectedItem[]; unverified?: boolean } | null;
 }
 
-export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, isManaged, onStepComplete, onManagedCreate }: Step3ScriptGenProps) {
+export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, onManagedCreate }: Step3ScriptGenProps) {
   const allSources = state.foundSources;
   const selectedSet = new Set(state.selectedIndices);
 
@@ -73,9 +71,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, i
   const [userPromptInputs, setUserPromptInputs] = useState<Record<number, string>>({});
   const [retryExpanded, setRetryExpanded] = useState<Set<number>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
-  // Track which sources were explicitly reset for retry (so we can ignore old SSE events)
   const resetSourcesRef = useRef(new Set<string>());
-  const onStepCompleteCalledRef = useRef(false);
 
   const updateStatus = useCallback((globalIdx: number, update: SourceStatus) => {
     setSourceStatuses((prev) => {
@@ -188,24 +184,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, i
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Check step completion and auto-advance
-  useEffect(() => {
-    if (onStepCompleteCalledRef.current) return;
-    const selectedSources = state.selectedIndices;
-    if (selectedSources.length === 0) return;
-
-    const allTerminated = selectedSources.every((i) => isTerminal(sourceStatuses[i]));
-    if (!allTerminated) return;
-
-    const hasSuccess = selectedSources.some(
-      (i) => sourceStatuses[i]?.status === 'success'
-    );
-    if (!hasSuccess) return;
-
-    onStepCompleteCalledRef.current = true;
-    onStepComplete?.();
-  }, [sourceStatuses, state.selectedIndices, onStepComplete]);
-
   // ── Derived state ────────────────────────────────────────────────────────────
   const anyInProgress = sourceStatuses.some(isInProgress);
   const allSelectedTerminated = state.selectedIndices.every((i) => isTerminal(sourceStatuses[i]));
@@ -257,7 +235,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, i
     }).catch(() => {});
 
     // Reset onStepComplete flag to allow it to fire again after retry
-    onStepCompleteCalledRef.current = false;
   };
 
   const retryAllFailed = () => {
@@ -279,9 +256,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, i
         <p className="text-sm text-muted-foreground">
           AI 正在为已选数据源生成并验证采集脚本，未选中的数据源可手动开始
         </p>
-        {isManaged && !allSelectedTerminated && (
-          <p className="text-xs text-amber-600 mt-1">托管模式：全部完成后将自动进入确认步骤</p>
-        )}
       </div>
 
       <ScrollArea className="h-[52vh] md:h-[48vh]">

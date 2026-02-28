@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import type { WizardState } from '@/types/wizard';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -32,8 +31,6 @@ export default function WizardShell() {
   const [state, setState] = useState<WizardState>(DEFAULT_STATE);
   const [mounted, setMounted] = useState(false);
   const [discarding, setDiscarding] = useState(false);
-  // 托管模式：步骤完成后自动前进。true = 托管，false = 手动
-  const [isManaged, setIsManaged] = useState(false);
 
   // Mount: handle new / resume-by-id / session-restore
   useEffect(() => {
@@ -61,7 +58,6 @@ export default function WizardShell() {
             try {
               const parsed = JSON.parse(sub.wizardStateJson) as WizardState;
               setState(parsed);
-              setIsManaged(false);
             } catch { /* ignore */ }
           }
         })
@@ -110,18 +106,8 @@ export default function WizardShell() {
         subscriptionId,
       };
       setState(newState);
-      setIsManaged(true);
 
-      if (resumeStep === 2) {
-        // find_sources might still be writing its log (race), or might have already completed.
-        // In watch mode (takeover.watchMode = true), old pipeline is still running find_sources.
-        // Just connect SSE to wait for the result — DON'T restart if old pipeline is running.
-        if (!takeover.watchMode) {
-          // find_sources was already completed but pipeline stopped before generate_scripts
-          // Nothing to restart for step 2 — show cached results
-        }
-        // Either way, Step2 will connect to SSE and pick up whatever comes
-      } else if (resumeStep === 3) {
+      if (resumeStep === 3) {
         // Restart generate_scripts for any sources that haven't been processed yet
         await fetch(`/api/subscriptions/${subscriptionId}/run-step`, {
           method: 'POST',
@@ -129,6 +115,8 @@ export default function WizardShell() {
           body: JSON.stringify({ step: 'generate_scripts', sources: foundSources }),
         });
       }
+      // resumeStep === 2: find_sources may still be running in old pipeline (watchMode = true)
+      // or already completed. Step2 will connect to SSE and pick up whatever is there.
 
       persistToDb({ ...newState });
     } catch { /* ignore */ }
@@ -189,9 +177,8 @@ export default function WizardShell() {
     }
   };
 
-  // Step2 next: start generate_scripts in background and advance
+  // Step2 next: start generate_scripts in background and advance to step 3
   const handleStep2Next = async (selectedSources: FoundSource[]) => {
-    // Save selected sources to state
     const selectedIndices = state.foundSources
       .map((s, i) => (selectedSources.some((sel) => sel.url === s.url) ? i : -1))
       .filter((i) => i >= 0);
@@ -225,15 +212,14 @@ export default function WizardShell() {
     });
   };
 
+  // "返回" button: save progress and go to subscription list.
+  // Does NOT delete the subscription — background steps keep running.
+  // User can resume later by clicking the card in the list.
   const handleBack = () => {
-    setState((prev) => {
-      const newStep = Math.max(prev.step - 1, 1) as WizardState['step'];
-      const newState = newStep === 1
-        ? { ...prev, step: newStep, foundSources: [], selectedIndices: [] }
-        : { ...prev, step: newStep };
-      persistToDb(newState);
-      return newState;
-    });
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch { /* ignore */ }
+    router.push('/subscriptions');
   };
 
   const handleComplete = (subscriptionId: string) => {
@@ -264,7 +250,7 @@ export default function WizardShell() {
     router.push('/subscriptions');
   };
 
-  // Managed create: start background pipeline and go to list
+  // Managed create: start full background pipeline and go to list
   const handleManagedCreate = async (data: {
     foundSources?: FoundSource[];
     generatedSources?: GeneratedSource[];
@@ -292,19 +278,6 @@ export default function WizardShell() {
     router.push('/subscriptions');
   };
 
-  // Toggle managed/manual mode — updates DB status but does not affect running background tasks
-  const handleToggleManaged = async (checked: boolean) => {
-    setIsManaged(checked);
-    if (!state.subscriptionId) return;
-    fetch(`/api/subscriptions/${state.subscriptionId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        managedStatus: checked ? 'managed_creating' : 'manual_creating',
-      }),
-    }).catch(() => {});
-  };
-
   if (!mounted) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -325,7 +298,7 @@ export default function WizardShell() {
       {/* Progress Bar */}
       <div className="px-4 pt-4 pb-2 md:px-6 md:pt-6">
         {isMobile ? (
-          // Mobile: compact dots with controls
+          // Mobile: compact dots + discard button
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {STEP_LABELS.map((_, idx) => {
@@ -358,35 +331,21 @@ export default function WizardShell() {
                 );
               })}
             </div>
-            <div className="flex items-center gap-2">
-              {/* Managed toggle (Step2 / Step3 only) */}
-              {(state.step === 2 || state.step === 3) && state.subscriptionId && (
-                <div className="flex items-center gap-1.5">
-                  <Switch
-                    checked={isManaged}
-                    onCheckedChange={handleToggleManaged}
-                    aria-label="托管模式"
-                    className="scale-90"
-                  />
-                  <span className="text-xs text-muted-foreground">托管</span>
-                </div>
-              )}
-              {state.step > 1 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
-                  onClick={handleDiscard}
-                  disabled={discarding}
-                  aria-label="丢弃并返回"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            {state.step > 1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
+                onClick={handleDiscard}
+                disabled={discarding}
+                aria-label="丢弃并返回"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         ) : (
-          // Desktop: steps with labels + controls
+          // Desktop: steps with labels + discard button
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center flex-1">
               {STEP_LABELS.map((label, idx) => {
@@ -445,21 +404,8 @@ export default function WizardShell() {
                 );
               })}
             </div>
-            <div className="flex items-center gap-3 mb-4">
-              {/* Managed toggle (Step2 / Step3 only) */}
-              {(state.step === 2 || state.step === 3) && state.subscriptionId && (
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={isManaged}
-                    onCheckedChange={handleToggleManaged}
-                    aria-label="托管模式"
-                  />
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">
-                    托管模式
-                  </span>
-                </div>
-              )}
-              {state.step > 1 && (
+            {state.step > 1 && (
+              <div className="mb-4">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -470,8 +416,8 @@ export default function WizardShell() {
                   <Trash2 className="h-4 w-4 mr-1" />
                   丢弃
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -499,12 +445,7 @@ export default function WizardShell() {
         {state.step === 2 && (
           <Step2FindSources
             {...stepProps}
-            isManaged={isManaged}
-            onStepComplete={(sources) => {
-              if (isManaged) {
-                handleStep2Next(sources);
-              }
-            }}
+            onStep2Next={handleStep2Next}
             onManagedCreate={(foundSources) =>
               handleManagedCreate({
                 startStep: foundSources.length > 0 ? 'generate_scripts' : 'find_sources',
@@ -516,12 +457,6 @@ export default function WizardShell() {
         {state.step === 3 && (
           <Step3ScriptGen
             {...stepProps}
-            isManaged={isManaged}
-            onStepComplete={() => {
-              if (isManaged) {
-                handleNext();
-              }
-            }}
             onManagedCreate={(generatedSources) =>
               handleManagedCreate({ startStep: 'complete', generatedSources })
             }
