@@ -92,7 +92,11 @@ export default function SubscriptionCard({
     }
   };
 
-  const isCreating = managedStatus === 'manual_creating' || managedStatus === 'managed_creating' || managedStatus === 'failed';
+  // Managed creating state: card not directly clickable, show takeover button
+  // Failed state: card clickable (to show details)
+  const isManagedCreating = managedStatus === 'managed_creating';
+  const isFailed = managedStatus === 'failed';
+  const isManualCreating = managedStatus === 'manual_creating';
 
   // Touch handlers for swipe
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -165,12 +169,12 @@ export default function SubscriptionCard({
       {/* Main card */}
       <div
         ref={cardRef}
-        className={`bg-card border border-border rounded-lg p-4 flex flex-col gap-3 transition-transform touch-manipulation ${!isCreating ? 'cursor-pointer hover:shadow-md' : ''}`}
+        className={`bg-card border border-border rounded-lg p-4 flex flex-col gap-3 transition-transform touch-manipulation ${!isManagedCreating ? 'cursor-pointer hover:shadow-md' : ''}`}
         style={{
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
         }}
-        onClick={!isCreating && swipeX > -SWIPE_THRESHOLD ? handleCardClick : undefined}
+        onClick={!isManagedCreating && swipeX > -SWIPE_THRESHOLD ? handleCardClick : undefined}
       >
         {/* Header row */}
         <div className="flex items-start justify-between gap-2">
@@ -179,19 +183,19 @@ export default function SubscriptionCard({
               <h3 className="font-semibold text-base truncate">{subscription.topic}</h3>
 
               {/* Status badges */}
-              {managedStatus === 'managed_creating' && (
+              {isManagedCreating && (
                 <Badge variant="outline" className="text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 text-xs shrink-0 animate-pulse">
                   托管创建中
                 </Badge>
               )}
-              {managedStatus === 'failed' && (
+              {isFailed && (
                 <Badge variant="outline" className="text-destructive border-destructive/50 bg-destructive/10 text-xs shrink-0">
                   创建失败
                 </Badge>
               )}
 
               {/* Normal unread badge */}
-              {!isCreating && subscription.unreadCount > 0 && (
+              {!isManagedCreating && !isManualCreating && subscription.unreadCount > 0 && (
                 <Badge variant="default" className="bg-blue-500 hover:bg-blue-500 text-white shrink-0">
                   {subscription.unreadCount} 未读
                 </Badge>
@@ -202,7 +206,7 @@ export default function SubscriptionCard({
                 监控：{subscription.criteria}
               </p>
             )}
-            {managedStatus === 'manual_creating' && (
+            {isManualCreating && (
               <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5">
                 {stepLabel && currentStep && (
                   <span className={`inline-flex items-center rounded ${stepBadgeColors[currentStep].bg} ${stepBadgeColors[currentStep].text} px-1.5 py-0.5 text-[10px] font-medium shrink-0`}>
@@ -212,17 +216,17 @@ export default function SubscriptionCard({
                 <span className="truncate">{shouldShowLog ? latestLog : '点击继续创建'}</span>
               </p>
             )}
-            {managedStatus === 'managed_creating' && (
+            {isManagedCreating && (
               <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5">
                 {stepLabel && currentStep && (
                   <span className={`inline-flex items-center rounded ${stepBadgeColors[currentStep].bg} ${stepBadgeColors[currentStep].text} px-1.5 py-0.5 text-[10px] font-medium shrink-0`}>
                     {stepLabel}
                   </span>
                 )}
-                <span className="truncate">{shouldShowLog ? latestLog : '点击查看进度'}</span>
+                <span className="truncate">{shouldShowLog ? latestLog : '托管创建中，等待接管'}</span>
               </p>
             )}
-            {managedStatus === 'failed' && (
+            {isFailed && (
               <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 flex items-start gap-1.5">
                 {stepLabel && currentStep && (
                   <span className={`inline-flex items-center rounded ${stepBadgeColors[currentStep].bg} ${stepBadgeColors[currentStep].text} px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-px`}>
@@ -236,8 +240,8 @@ export default function SubscriptionCard({
 
           {/* Actions — stop propagation so clicks don't navigate */}
           <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-            {isCreating ? (
-              // Creating state: show takeover + discard buttons
+            {isManagedCreating ? (
+              // Managed creating state: show takeover + discard buttons
               <>
                 <Button
                   variant="outline"
@@ -245,7 +249,7 @@ export default function SubscriptionCard({
                   className="h-7 px-2 text-xs text-blue-600 border-blue-400/50 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50"
                   onClick={handleCardClick}
                 >
-                  {managedStatus === 'managed_creating' ? '接管' : '继续创建'}
+                  接管
                 </Button>
                 <Button
                   variant="ghost"
@@ -258,7 +262,7 @@ export default function SubscriptionCard({
                 </Button>
               </>
             ) : (
-              // Normal state: show switch + delete (desktop only, hide on mobile)
+              // Normal state / manual creating / failed: show switch + delete (desktop only, hide on mobile)
               <>
                 <Switch
                   checked={subscription.isEnabled}
@@ -280,7 +284,7 @@ export default function SubscriptionCard({
         </div>
 
         {/* Stats row — only for normal subscriptions */}
-        {!isCreating && (
+        {!isManagedCreating && !isManualCreating && (
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span>共 {subscription.totalCount} 条</span>
             <span>·</span>
