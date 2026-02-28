@@ -50,6 +50,11 @@ function writeLog(
       })
       .run();
   } catch (err) {
+    // Silently ignore foreign key constraint errors — subscription was deleted
+    // (user discarded or took over the managed creation)
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      return;
+    }
     console.error('[managed pipeline] Failed to write log:', err);
   }
 }
@@ -90,6 +95,7 @@ export async function runManagedPipeline(
         const discovered = await findSourcesAgent(
           { topic, criteria },
           (event: unknown) => {
+            if (isCancelled(subscriptionId)) return;
             const e = event as Record<string, unknown>;
             if (e.type === 'tool_call' && e.name === 'webSearch') {
               const args = e.args as { query: string };
@@ -150,6 +156,7 @@ export async function runManagedPipeline(
                 criteria,
               },
               (msg: string) => {
+                if (isCancelled(subscriptionId)) return;
                 writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`);
               },
               undefined,
