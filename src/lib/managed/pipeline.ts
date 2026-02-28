@@ -540,7 +540,11 @@ export async function runManagedPipeline(
     if (startStep !== 'complete') {
       if (isCancelled(subscriptionId)) return;
 
-      const sourcesToProcess = foundSources.length > 0 ? foundSources : (initialFoundSources ?? []);
+      // Use selected sources for script generation, not all found sources
+      // foundSources contains all discovered sources, but we want only the ones actually selected
+      const sourcesToProcess = initialFoundSources && initialFoundSources.length > 0
+        ? initialFoundSources  // Frontend passed specific sources
+        : foundSources;  // Use what Phase 1 set (should be selected sources from info log)
 
       // Skip sources already provided in initialGeneratedSources (wizard handoff)
       const alreadyDoneUrls = new Set((initialGeneratedSources ?? []).map((s) => s.url));
