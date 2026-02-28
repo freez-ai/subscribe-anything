@@ -329,6 +329,61 @@ function getCompletedSourceUrls(subscriptionId: string): Set<string> {
 
 // ── Full managed pipeline (used by "后台托管创建" button) ─────────────────────
 
+/**
+ * Wait for an already-running find_sources step to complete.
+ * Returns discovered sources (from success log payload) or null on error/timeout/cancel.
+ */
+async function waitForFindSourcesResult(
+  subscriptionId: string,
+  isCancelledFn: () => boolean,
+  maxWaitMs = 5 * 60 * 1000
+): Promise<FoundSource[] | null> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    if (isCancelledFn()) return null;
+    const db = getDb();
+    const successLog = db
+      .select({ payload: managedBuildLogs.payload })
+      .from(managedBuildLogs)
+      .where(
+        and(
+          eq(managedBuildLogs.subscriptionId, subscriptionId),
+          eq(managedBuildLogs.step, 'find_sources'),
+          eq(managedBuildLogs.level, 'success')
+        )
+      )
+      .get();
+    if (successLog?.payload) {
+      try {
+        const s = JSON.parse(successLog.payload);
+        if (Array.isArray(s)) return s as FoundSource[];
+      } catch { /* ignore */ }
+    }
+    const errorLog = db
+      .select({ id: managedBuildLogs.id })
+      .from(managedBuildLogs)
+      .where(
+        and(
+          eq(managedBuildLogs.subscriptionId, subscriptionId),
+          eq(managedBuildLogs.step, 'find_sources'),
+          eq(managedBuildLogs.level, 'error')
+        )
+      )
+      .get();
+    if (errorLog) return null;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return null;
+}
+
+/** Auto-select up to 5 sources: prefer recommended, fall back to all */
+function autoSelectSources(discovered: FoundSource[]): FoundSource[] {
+  const recommended = discovered.filter((s) => s.recommended);
+  const notRecommended = discovered.filter((s) => !s.recommended);
+  if (recommended.length >= 5) return recommended.slice(0, 5);
+  return [...recommended, ...notRecommended.slice(0, 5 - recommended.length)];
+}
+
 export async function runManagedPipeline(
   subscriptionId: string,
   payload: ManagedPayload
@@ -343,44 +398,89 @@ export async function runManagedPipeline(
     if (startStep === 'find_sources') {
       if (isCancelled(subscriptionId)) return;
 
-      writeLog(subscriptionId, 'find_sources', 'info', '开始发现数据源...');
+      // Check if find_sources already has results in DB (another task may be running or done)
+      const db = getDb();
+      const existingSuccess = db
+        .select({ payload: managedBuildLogs.payload })
+        .from(managedBuildLogs)
+        .where(
+          and(
+            eq(managedBuildLogs.subscriptionId, subscriptionId),
+            eq(managedBuildLogs.step, 'find_sources'),
+            eq(managedBuildLogs.level, 'success')
+          )
+        )
+        .get();
 
-      try {
-        const { findSourcesAgent } = await import('@/lib/ai/agents/findSourcesAgent');
+      if (existingSuccess?.payload) {
+        // Already completed — reuse results
+        try {
+          const discovered = JSON.parse(existingSuccess.payload) as FoundSource[];
+          if (Array.isArray(discovered)) {
+            const selected = autoSelectSources(discovered);
+            foundSources = selected;
+            writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源（复用已有结果）`);
+          }
+        } catch { /* ignore, will fall through to fresh run */ }
+      } else {
+        // Check if a find_sources task is already in progress
+        const existingInfo = db
+          .select({ id: managedBuildLogs.id })
+          .from(managedBuildLogs)
+          .where(
+            and(
+              eq(managedBuildLogs.subscriptionId, subscriptionId),
+              eq(managedBuildLogs.step, 'find_sources'),
+              eq(managedBuildLogs.level, 'info')
+            )
+          )
+          .get();
 
-        const discovered = await findSourcesAgent(
-          { topic, criteria },
-          (event: unknown) => {
-            if (isCancelled(subscriptionId)) return;
-            const e = event as Record<string, unknown>;
-            if (e.type === 'tool_call' && e.name === 'webSearch') {
-              const args = e.args as { query: string };
-              writeLog(subscriptionId, 'find_sources', 'progress', `搜索：${args.query}`);
-            }
-          },
-          (info) => upsertLLMCall(subscriptionId, info),
-          userId
-        );
-
-        // Auto-select sources: prefer recommended, up to 5 total
-        const recommended = discovered.filter((s) => s.recommended);
-        const notRecommended = discovered.filter((s) => !s.recommended);
-        let selected: FoundSource[];
-        if (recommended.length >= 5) {
-          selected = recommended.slice(0, 5);
+        if (existingInfo) {
+          // Task is in progress — wait for it to finish
+          writeLog(subscriptionId, 'find_sources', 'info', '等待数据源发现任务完成...');
+          const discovered = await waitForFindSourcesResult(subscriptionId, () => isCancelled(subscriptionId));
+          if (!discovered || isCancelled(subscriptionId)) {
+            markFailed(subscriptionId, '发现数据源失败或超时');
+            return;
+          }
+          const selected = autoSelectSources(discovered);
+          foundSources = selected;
+          writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`);
         } else {
-          selected = [...recommended, ...notRecommended.slice(0, 5 - recommended.length)];
-        }
-        foundSources = selected;
+          // No existing task — run from scratch
+          writeLog(subscriptionId, 'find_sources', 'info', '开始发现数据源...');
 
-        // Always write sources log — even if cancelled (watch mode needs to see results)
-        writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
-        writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        writeLog(subscriptionId, 'find_sources', 'error', `发现数据源失败：${msg}`);
-        markFailed(subscriptionId, `发现数据源失败：${msg}`);
-        return;
+          try {
+            const { findSourcesAgent } = await import('@/lib/ai/agents/findSourcesAgent');
+
+            const discovered = await findSourcesAgent(
+              { topic, criteria },
+              (event: unknown) => {
+                if (isCancelled(subscriptionId)) return;
+                const e = event as Record<string, unknown>;
+                if (e.type === 'tool_call' && e.name === 'webSearch') {
+                  const args = e.args as { query: string };
+                  writeLog(subscriptionId, 'find_sources', 'progress', `搜索：${args.query}`);
+                }
+              },
+              (info) => upsertLLMCall(subscriptionId, info),
+              userId
+            );
+
+            const selected = autoSelectSources(discovered);
+            foundSources = selected;
+
+            // Always write sources log — even if cancelled (watch mode needs to see results)
+            writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
+            writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            writeLog(subscriptionId, 'find_sources', 'error', `发现数据源失败：${msg}`);
+            markFailed(subscriptionId, `发现数据源失败：${msg}`);
+            return;
+          }
+        }
       }
     }
 
