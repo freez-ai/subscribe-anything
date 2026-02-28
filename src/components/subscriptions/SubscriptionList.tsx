@@ -110,27 +110,15 @@ export default function SubscriptionList() {
   }
 
   return (
-    <>
-      {/* Desktop-only add button */}
-      <div className="hidden md:flex justify-end mb-4">
-        <Link href="/subscriptions/new" onClick={() => sessionStorage.setItem('wizard-new', '1')}>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            新建订阅
-          </Button>
-        </Link>
-      </div>
-
-      <div className="space-y-3">
-        {subscriptions.map((sub) => (
-          <SubscriptionCard
-            key={sub.id}
-            subscription={sub}
-            onToggle={handleToggle}
-            onDelete={handleDelete}
-          />
-        ))}
-      </div>
-    </>
+    <div className="space-y-3">
+      {subscriptions.map((sub) => (
+        <SubscriptionCard
+          key={sub.id}
+          subscription={sub}
+          onToggle={handleToggle}
+          onDelete={handleDelete}
+        />
+      ))}
+    </div>
   );
 }
