@@ -64,10 +64,26 @@ function LoginContent() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Subscribe Anything
+          {/* Logo */}
+          <div className="flex justify-center mb-6">
+            <img
+              src="/favicon-32x32.png"
+              alt="Logo"
+              className="w-8 h-8"
+            />
+          </div>
+
+          {/* 主标题 - 中文 */}
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+            订阅万物
           </h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+
+          {/* 副标题 - 英文 */}
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Subscribe Anything
+          </p>
+
+          <p className="text-sm text-gray-600 dark:text-gray-400">
             {mode === 'login' ? '登录您的账户' : '创建新账户'}
           </p>
         </div>
