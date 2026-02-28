@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { subscriptions } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
-import { runManagedPipeline } from '@/lib/managed/pipeline';
+import { runManagedPipeline, abortAllSources } from '@/lib/managed/pipeline';
 import type { ManagedStartStep } from '@/lib/managed/pipeline';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 
@@ -69,6 +69,9 @@ export async function POST(req: Request) {
       if (!existing || existing.managedStatus !== 'manual_creating') {
         return Response.json({ error: 'Subscription not found or not in manual_creating state' }, { status: 400 });
       }
+
+      // Cancel any running source generation tasks (from run-step) before managed pipeline takes over
+      abortAllSources(existingSubscriptionId);
 
       db.update(subscriptions)
         .set({

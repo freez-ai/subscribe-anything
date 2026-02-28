@@ -20,14 +20,65 @@ import type { FoundSource, GeneratedSource } from '@/types/wizard';
 // In-memory set of "subscriptionId:sourceUrl" keys that have been manually aborted.
 export const abortedSourceKeys = new Set<string>();
 
+// In-memory map of "subscriptionId:sourceUrl" → AbortController for running source generation tasks.
+// Used to truly cancel LLM calls when a source is aborted or managed pipeline takes over.
+const sourceAbortControllers = new Map<string, AbortController>();
+
 /**
- * Abort a specific source generation: add to abortedSourceKeys and write an error log.
- * The background task may still be running its current LLM call, but will be ignored on next
- * checkpoint; the error log causes the frontend SSE to show the source as failed immediately.
+ * Abort a specific source generation: add to abortedSourceKeys, trigger AbortController,
+ * and write an error log. This actually cancels the running LLM call.
  */
 export function abortSource(subscriptionId: string, sourceUrl: string): void {
-  abortedSourceKeys.add(`${subscriptionId}:${sourceUrl}`);
+  const key = `${subscriptionId}:${sourceUrl}`;
+  abortedSourceKeys.add(key);
+  // Trigger the AbortController to cancel the running LLM call
+  const controller = sourceAbortControllers.get(key);
+  if (controller) {
+    controller.abort();
+    sourceAbortControllers.delete(key);
+  }
   writeLog(subscriptionId, 'generate_script', 'error', '已手动中断', { sourceUrl });
+}
+
+/**
+ * Abort ALL running source generation tasks for a subscription.
+ * Called when managed pipeline takes over from run-step tasks.
+ */
+export function abortAllSources(subscriptionId: string): void {
+  const prefix = `${subscriptionId}:`;
+  for (const [key, controller] of sourceAbortControllers) {
+    if (key.startsWith(prefix)) {
+      controller.abort();
+      sourceAbortControllers.delete(key);
+    }
+  }
+  // Also mark all as aborted so any leftover callbacks are ignored
+  for (const key of abortedSourceKeys) {
+    // Keep existing entries — they don't hurt
+  }
+}
+
+/**
+ * Register an AbortController for a source generation task.
+ * Returns the AbortSignal to pass to generateScriptAgent.
+ */
+export function registerSourceAbort(subscriptionId: string, sourceUrl: string): AbortSignal {
+  const key = `${subscriptionId}:${sourceUrl}`;
+  // Abort any existing controller for this source (e.g. from a previous attempt)
+  const existing = sourceAbortControllers.get(key);
+  if (existing) existing.abort();
+  const controller = new AbortController();
+  sourceAbortControllers.set(key, controller);
+  // Clean up the aborted flag so retries work
+  abortedSourceKeys.delete(key);
+  return controller.signal;
+}
+
+/**
+ * Unregister the AbortController for a source (task finished normally).
+ */
+export function unregisterSourceAbort(subscriptionId: string, sourceUrl: string): void {
+  sourceAbortControllers.delete(`${subscriptionId}:${sourceUrl}`);
 }
 
 export type ManagedStartStep = 'find_sources' | 'generate_scripts' | 'complete';
@@ -163,6 +214,8 @@ export async function runGenerateScriptsStep(
         const abortKey = `${subscriptionId}:${source.url}`;
         if (abortedSourceKeys.has(abortKey)) return;
 
+        const signal = registerSourceAbort(subscriptionId, source.url);
+
         writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
 
         try {
@@ -178,8 +231,11 @@ export async function runGenerateScriptsStep(
               writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
             },
             (info) => upsertLLMCall(subscriptionId, { ...info, sourceUrl: source.url }),
-            userId
+            userId,
+            signal
           );
+
+          unregisterSourceAbort(subscriptionId, source.url);
 
           // If aborted while agent was running, don't overwrite the abort error log
           if (abortedSourceKeys.has(abortKey)) return;
@@ -215,7 +271,10 @@ export async function runGenerateScriptsStep(
             writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
           }
         } catch (err) {
+          unregisterSourceAbort(subscriptionId, source.url);
           if (abortedSourceKeys.has(abortKey)) return;
+          // AbortError from signal — already handled by abortSource writing the error log
+          if (err instanceof Error && err.name === 'AbortError') return;
           const msg = err instanceof Error ? err.message : String(err);
           writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
         }
@@ -236,6 +295,8 @@ export async function retryGenerateSourceStep(
   userId: string,
   userPrompt?: string
 ): Promise<void> {
+  const signal = registerSourceAbort(subscriptionId, source.url);
+
   writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 重新生成脚本...`, { sourceUrl: source.url });
 
   try {
@@ -253,8 +314,11 @@ export async function retryGenerateSourceStep(
         writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
       },
       (info) => upsertLLMCall(subscriptionId, { ...info, sourceUrl: source.url }),
-      userId
+      userId,
+      signal
     );
+
+    unregisterSourceAbort(subscriptionId, source.url);
 
     if (result.success && result.script) {
       writeLog(
@@ -287,6 +351,10 @@ export async function retryGenerateSourceStep(
       writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
     }
   } catch (err) {
+    unregisterSourceAbort(subscriptionId, source.url);
+    const abortKey = `${subscriptionId}:${source.url}`;
+    if (abortedSourceKeys.has(abortKey)) return;
+    if (err instanceof Error && err.name === 'AbortError') return;
     const msg = err instanceof Error ? err.message : String(err);
     writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
   }
@@ -636,6 +704,8 @@ export async function runManagedPipeline(
             limit(async () => {
               if (isCancelled(subscriptionId)) return;
 
+              const signal = registerSourceAbort(subscriptionId, source.url);
+
               writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
 
               try {
@@ -651,8 +721,11 @@ export async function runManagedPipeline(
                     writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
                   },
                   (info) => upsertLLMCall(subscriptionId, { ...info, sourceUrl: source.url }),
-                  userId
+                  userId,
+                  signal
                 );
+
+                unregisterSourceAbort(subscriptionId, source.url);
 
                 if (isCancelled(subscriptionId)) return;
 
@@ -700,6 +773,9 @@ export async function runManagedPipeline(
                   writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
                 }
               } catch (err) {
+                unregisterSourceAbort(subscriptionId, source.url);
+                if (isCancelled(subscriptionId)) return;
+                if (err instanceof Error && err.name === 'AbortError') return;
                 const msg = err instanceof Error ? err.message : String(err);
                 writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
               }

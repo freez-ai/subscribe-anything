@@ -49,7 +49,8 @@ export async function generateScriptAgent(
   source: SourceInput,
   onProgress?: (message: string) => void,
   onLLMCall?: (info: LLMCallInfo) => void,
-  userId?: string | null
+  userId?: string | null,
+  signal?: AbortSignal
 ): Promise<GenerateResult> {
   const provider = getProviderForTemplate('generate-script', userId);
   const tpl = getTemplate('generate-script', userId);
@@ -84,6 +85,11 @@ export async function generateScriptAgent(
 
   // Agentic loop — max 32 iterations total (fetch + multiple validate retries)
   for (let iteration = 0; iteration < 32; iteration++) {
+    // Check for abort at the start of each iteration
+    if (signal?.aborted) {
+      return { success: false, error: '已中断' };
+    }
+
     let textBuffer = '';
     const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
 
@@ -94,7 +100,7 @@ export async function generateScriptAgent(
       tool_choice: 'auto',
       stream: true,
       stream_options: { include_usage: true },
-    }, { callIndex: iteration + 1, onCall: onLLMCall });
+    }, { callIndex: iteration + 1, onCall: onLLMCall, signal });
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
@@ -148,6 +154,11 @@ export async function generateScriptAgent(
 
     // Execute each tool call
     for (const tc of toolCalls) {
+      // Check for abort between tool calls
+      if (signal?.aborted) {
+        return { success: false, error: '已中断' };
+      }
+
       let resultContent = '';
 
       try {

@@ -197,7 +197,7 @@ function normalizeMessages(
 export async function* llmStream(
   openai: OpenAI,
   params: OpenAI.Chat.ChatCompletionCreateParamsStreaming,
-  options?: { callIndex?: number; onCall?: (info: LLMCallInfo) => void }
+  options?: { callIndex?: number; onCall?: (info: LLMCallInfo) => void; signal?: AbortSignal }
 ): AsyncGenerator<OpenAI.Chat.ChatCompletionChunk> {
   const callIndex = options?.callIndex ?? 1;
   const onCall = options?.onCall;
@@ -218,7 +218,9 @@ export async function* llmStream(
     streaming: true,
   });
 
-  const stream = await openai.chat.completions.create(params);
+  const stream = await openai.chat.completions.create(params, {
+    signal: options?.signal,
+  });
 
   let textAcc = '';
   const toolCallsAcc: Record<number, { name: string; args: string }> = {};
