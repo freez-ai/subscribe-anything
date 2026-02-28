@@ -292,7 +292,7 @@ export default function Step4Confirm({
                     {isCustom && (
                       <Input
                         className="h-8 text-xs font-mono"
-                        placeholder="0 */6 * * *"
+                        placeholder="0 * * * *"
                         value={customValue}
                         onChange={(e) => handleCustomCronChange(idx, e.target.value)}
                       />

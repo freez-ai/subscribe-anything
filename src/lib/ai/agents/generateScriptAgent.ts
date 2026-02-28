@@ -79,7 +79,7 @@ export async function generateScriptAgent(
   let validateAttempts = 0;
   let lastValidItems: CollectedItem[] | undefined;
   let lastScript: string | undefined;
-  let lastCronExpression = '0 */6 * * *';
+  let lastCronExpression = '0 * * * *';
   let sandboxUnavailable = false;
   let lastScriptAttempted: string | undefined;
 
