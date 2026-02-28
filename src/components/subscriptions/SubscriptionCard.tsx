@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Trash2 } from 'lucide-react';
+import { ArrowRight, Trash2 } from 'lucide-react';
 import type { Subscription } from '@/types/db';
 
 interface SubscriptionCardProps {
@@ -83,8 +83,8 @@ export default function SubscriptionCard({
 
   return (
     <div
-      className={`bg-card border border-border rounded-lg p-4 flex flex-col gap-3 transition-shadow touch-manipulation cursor-pointer hover:shadow-md`}
-      onClick={handleCardClick}
+      className={`bg-card border border-border rounded-lg p-4 flex flex-col gap-3 transition-shadow touch-manipulation ${!isCreating ? 'cursor-pointer hover:shadow-md' : ''}`}
+      onClick={!isCreating ? handleCardClick : undefined}
     >
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
@@ -151,16 +151,26 @@ export default function SubscriptionCard({
         {/* Actions — stop propagation so clicks don't navigate */}
         <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
           {isCreating ? (
-            // Creating state: show only discard button
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={() => onDiscard?.(subscription.id)}
-              aria-label="丢弃"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            // Creating state: show takeover + discard buttons
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                onClick={handleCardClick}
+              >
+                接管
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={() => onDiscard?.(subscription.id)}
+                aria-label="丢弃"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
           ) : (
             // Normal state: show switch + delete
             <>
