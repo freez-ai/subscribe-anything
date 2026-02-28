@@ -5,7 +5,7 @@ import { useRef, useState, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Trash2 } from 'lucide-react';
+import { Power, Trash2 } from 'lucide-react';
 import type { Subscription } from '@/types/db';
 
 interface SubscriptionCardProps {
@@ -32,7 +32,7 @@ function formatRelativeTime(date: Date | null | undefined): string {
 }
 
 const SWIPE_THRESHOLD = 100;
-const SWIPE_MAX = 120;
+const SWIPE_MAX = 180; // Width for both toggle and delete buttons
 
 export default function SubscriptionCard({
   subscription,
@@ -148,21 +148,43 @@ export default function SubscriptionCard({
       onTouchEnd={handleTouchEnd}
       onClick={handleClickOutside}
     >
-      {/* Delete action button (revealed on swipe) */}
+      {/* Action buttons (revealed on swipe) */}
       <div
-        className="absolute inset-y-0 right-0 bg-destructive flex items-center justify-end px-4 transition-transform"
+        className="absolute inset-y-0 right-0 flex transition-transform"
         style={{
           transform: `translateX(${swipeX + SWIPE_MAX}px)`,
-          width: `${SWIPE_MAX}px`,
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          handleDelete();
+          width: `${!isManagedCreating && !isManualCreating && !isFailed ? SWIPE_MAX : SWIPE_MAX / 2}px`,
         }}
       >
-        <div className="flex flex-col items-center gap-1 text-white">
+        {/* Toggle button (left side) - only for non-creating cards */}
+        {!isManagedCreating && !isManualCreating && !isFailed && (
+          <div
+            className={`flex-1 flex flex-col items-center justify-center gap-1 ${
+              subscription.isEnabled
+                ? 'bg-green-500 text-white'
+                : 'bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-300'
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(subscription.id, !subscription.isEnabled);
+            }}
+          >
+            <Power className="h-5 w-5" />
+            <span className="text-[10px] font-medium">{subscription.isEnabled ? '启用' : '禁用'}</span>
+          </div>
+        )}
+        {/* Delete button (right side) */}
+        <div
+          className={`bg-destructive flex flex-col items-center justify-center gap-1 text-white ${
+            !isManagedCreating && !isManualCreating && !isFailed ? 'flex-1' : 'w-24'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDelete();
+          }}
+        >
           <Trash2 className="h-5 w-5" />
-          <span className="text-xs">删除</span>
+          <span className="text-[10px]">删除</span>
         </div>
       </div>
 
@@ -262,23 +284,16 @@ export default function SubscriptionCard({
                 </Button>
               </>
             ) : (
-              // Normal state / manual creating / failed: show switch + delete (desktop only, hide on mobile)
-              <>
-                <Switch
-                  checked={subscription.isEnabled}
-                  onCheckedChange={(checked) => onToggle(subscription.id, checked)}
-                  aria-label={subscription.isEnabled ? '禁用订阅' : '启用订阅'}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="hidden h-8 w-8 md:flex text-muted-foreground hover:text-destructive"
-                  onClick={() => onDelete(subscription.id)}
-                  aria-label="删除订阅"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </>
+              // Normal state / manual creating / failed: show delete button only (desktop)
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden h-8 w-8 md:flex text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(subscription.id)}
+                aria-label="删除订阅"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             )}
           </div>
         </div>
