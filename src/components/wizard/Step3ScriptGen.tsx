@@ -554,11 +554,11 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
               }}
               className="flex-none text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
               title={anyInProgress
-                ? '中止当前生成，将已完成的源交给后台托管创建'
+                ? '中止当前生成，将已完成的源交给后台完成'
                 : '跳过确认步骤，在后台直接创建订阅'}
             >
               <Bot className="h-4 w-4 mr-1.5" />
-              {anyInProgress ? '转后台托管' : '后台托管创建'}
+              {anyInProgress ? '后台完成' : '帮我完成'}
             </Button>
           )}
           <Button

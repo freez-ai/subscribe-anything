@@ -121,7 +121,7 @@ export default function Step1Topic({ state, onStateChange, onNext, onStep1Next, 
               title="AI 自动完成所有步骤，在后台创建订阅"
             >
               <Bot className="h-4 w-4 mr-1.5" />
-              后台托管创建
+              帮我完成
             </Button>
           )}
         </div>
