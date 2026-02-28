@@ -383,13 +383,11 @@ export default function Step2FindSources({
               '下一步'
             )}
           </Button>
-          {(isStreaming || (isDone && sources.length > 0)) && onManagedCreate && (
+          {onManagedCreate && (
             <Button
               variant="outline"
               onClick={() => {
-                if (isStreaming) {
-                  abortRef.current?.abort();
-                }
+                abortRef.current?.abort();
                 const selected = Array.from(checkedIndices).map((i) => sources[i]).filter(Boolean);
                 onManagedCreate(selected.length > 0 ? selected : sources);
               }}
