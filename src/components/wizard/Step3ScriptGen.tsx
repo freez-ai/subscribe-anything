@@ -545,7 +545,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                 ? `下一步（${successSources.length} 个源就绪）`
                 : '下一步'}
           </Button>
-          {hasSuccess && onManagedCreate && (
+          {(hasSuccess || anyInProgress) && onManagedCreate && (
             <Button
               variant="outline"
               onClick={() => {
