@@ -63,19 +63,30 @@ function TruncatableText({ text }: { text: string }) {
  * We only render the delta (messages added since the last call).
  * [assistant] messages are omitted — their content is already shown in the
  * response section below (tool_calls / responseText).
+ *
+ * `nextToolResults` = tool role messages from the NEXT call's delta,
+ * so we can pair them with this call's tool_calls.
  */
-function CallBlock({ info, prevMessageCount }: { info: LLMCallInfo; prevMessageCount: number }) {
+function CallBlock({
+  info,
+  prevMessageCount,
+  nextToolResults,
+}: {
+  info: LLMCallInfo;
+  prevMessageCount: number;
+  nextToolResults: Array<{ role: string; content: string }>;
+}) {
   const isStreaming = info.streaming === true;
   const hasResponse = info.toolCalls.length > 0 || !!info.responseText;
 
-  // Delta messages excluding assistant (shown in the response section instead)
+  // Delta messages excluding assistant and tool (tool results shown paired with tool_calls)
   const newMessages = info.messages
     .slice(prevMessageCount)
-    .filter((m) => m.role !== 'assistant');
+    .filter((m) => m.role !== 'assistant' && m.role !== 'tool');
 
   return (
     <div className="py-4 border-b border-border/20 last:border-b-0">
-      {/* ── Delta messages (system / user / tool results) ── */}
+      {/* ── Delta messages (system / user — excluding tool results) ── */}
       {newMessages.length > 0 && (
         <div className="space-y-1.5 mb-2.5">
           {newMessages.map((msg, i) => (
@@ -95,7 +106,7 @@ function CallBlock({ info, prevMessageCount }: { info: LLMCallInfo; prevMessageC
         </div>
       )}
 
-      {/* ── Response (tool calls + text) ── */}
+      {/* ── Response (tool calls paired with results, + text) ── */}
       {(hasResponse || isStreaming) && (
         <div
           className={`space-y-1 ${newMessages.length > 0 ? 'border-t border-border/15 pt-2' : ''}`}
@@ -115,14 +126,29 @@ function CallBlock({ info, prevMessageCount }: { info: LLMCallInfo; prevMessageC
           {info.toolCalls.map((tc, i) => {
             let prettyArgs = tc.args;
             try { prettyArgs = JSON.stringify(JSON.parse(tc.args)); } catch { /* keep raw */ }
+            const toolResult = nextToolResults[i];
             return (
-              <div key={i} className="flex gap-2 items-start">
-                <span className="flex-shrink-0 text-orange-400 text-[10px] leading-[1.6]">
-                  [tool_call]
-                </span>
-                <span className="text-foreground/70 text-[11px] leading-relaxed flex-1 min-w-0">
-                  <TruncatableText text={`${tc.name}(${prettyArgs})`} />
-                </span>
+              <div key={i} className="space-y-1">
+                {/* tool_call */}
+                <div className="flex gap-2 items-start">
+                  <span className="flex-shrink-0 text-orange-400 text-[10px] leading-[1.6]">
+                    [tool_call]
+                  </span>
+                  <span className="text-foreground/70 text-[11px] leading-relaxed flex-1 min-w-0">
+                    <TruncatableText text={`${tc.name}(${prettyArgs})`} />
+                  </span>
+                </div>
+                {/* paired tool result */}
+                {toolResult && (
+                  <div className="flex gap-2 items-start">
+                    <span className="flex-shrink-0 w-[4.5rem] text-yellow-400 text-[10px] leading-[1.6]">
+                      [tool]
+                    </span>
+                    <span className="text-foreground/70 text-[11px] leading-relaxed flex-1 min-w-0">
+                      <TruncatableText text={toolResult.content} />
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -195,13 +221,23 @@ export default function LLMLogDialog({
               暂无调用记录
             </div>
           ) : (
-            calls.map((call, idx) => (
-              <CallBlock
-                key={idx}
-                info={call}
-                prevMessageCount={calls[idx - 1]?.messages.length ?? 0}
-              />
-            ))
+            calls.map((call, idx) => {
+              // Extract tool results from the NEXT call's delta messages
+              const nextCall = calls[idx + 1];
+              const nextToolResults = nextCall
+                ? nextCall.messages
+                    .slice(call.messages.length)
+                    .filter((m) => m.role === 'tool')
+                : [];
+              return (
+                <CallBlock
+                  key={idx}
+                  info={call}
+                  prevMessageCount={calls[idx - 1]?.messages.length ?? 0}
+                  nextToolResults={nextToolResults}
+                />
+              );
+            })
           )}
         </div>
 
