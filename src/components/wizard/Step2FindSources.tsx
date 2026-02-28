@@ -306,7 +306,7 @@ export default function Step2FindSources({
             </span>
           ))}
           {isStreaming && (
-            <div className="flex gap-1 items-center px-1">
+            <div className="basis-full flex gap-1 items-center px-1 mt-1">
               <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:0ms]" />
               <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:150ms]" />
               <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:300ms]" />
