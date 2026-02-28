@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import SubscriptionCard from './SubscriptionCard';
+import ManagedProgressDrawer from './ManagedProgressDrawer';
 import type { Subscription } from '@/types/db';
 
 export default function SubscriptionList() {
@@ -13,6 +14,7 @@ export default function SubscriptionList() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [progressTarget, setProgressTarget] = useState<string | null>(null);
 
   const fetchSubscriptions = useCallback(async () => {
     try {
@@ -30,6 +32,17 @@ export default function SubscriptionList() {
   useEffect(() => {
     fetchSubscriptions();
   }, [fetchSubscriptions]);
+
+  // Poll for updates when there are subscriptions in creating state
+  useEffect(() => {
+    const hasCreating = subscriptions.some(
+      (s) => s.managedStatus === 'managed_creating' || s.managedStatus === 'manual_creating'
+    );
+    if (!hasCreating) return;
+
+    const timer = setInterval(fetchSubscriptions, 5000);
+    return () => clearInterval(timer);
+  }, [subscriptions, fetchSubscriptions]);
 
   const handleToggle = useCallback(async (id: string, isEnabled: boolean) => {
     // Optimistic update
@@ -73,6 +86,30 @@ export default function SubscriptionList() {
     }
   }, [subscriptions, toast]);
 
+  // Discard: delete without confirm dialog (for creating state cards)
+  const handleDiscard = useCallback(async (id: string) => {
+    if (!confirm('确认丢弃此创建中的订阅？')) return;
+
+    const snapshot = subscriptions.find((s) => s.id === id);
+    setSubscriptions((prev) => prev.filter((s) => s.id !== id));
+
+    try {
+      const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed');
+      toast({ title: '已丢弃' });
+    } catch {
+      if (snapshot) {
+        setSubscriptions((prev) => [snapshot, ...prev]);
+      }
+      toast({ title: '操作失败', variant: 'destructive' });
+    }
+  }, [subscriptions, toast]);
+
+  const handleTakeover = useCallback(() => {
+    // After takeover, the subscription was deleted — refresh list
+    fetchSubscriptions();
+  }, [fetchSubscriptions]);
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -110,15 +147,27 @@ export default function SubscriptionList() {
   }
 
   return (
-    <div className="space-y-3">
-      {subscriptions.map((sub) => (
-        <SubscriptionCard
-          key={sub.id}
-          subscription={sub}
-          onToggle={handleToggle}
-          onDelete={handleDelete}
-        />
-      ))}
-    </div>
+    <>
+      <div className="space-y-3">
+        {subscriptions.map((sub) => (
+          <SubscriptionCard
+            key={sub.id}
+            subscription={sub}
+            onToggle={handleToggle}
+            onDelete={handleDelete}
+            onOpenProgress={(id) => setProgressTarget(id)}
+            onDiscard={handleDiscard}
+          />
+        ))}
+      </div>
+
+      <ManagedProgressDrawer
+        subscriptionId={progressTarget}
+        isOpen={progressTarget !== null}
+        onClose={() => setProgressTarget(null)}
+        onTakeover={handleTakeover}
+        onDiscard={handleDiscard}
+      />
+    </>
   );
 }

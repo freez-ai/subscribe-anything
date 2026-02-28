@@ -26,4 +26,5 @@ export interface WizardState {
   foundSources: FoundSource[];
   selectedIndices: number[];
   generatedSources: GeneratedSource[];
+  subscriptionId?: string; // Step1 完成后写入，用于后续步骤的 DB 持久化
 }

@@ -100,37 +100,60 @@ export default function Step4Confirm({
     setIsSubmitting(true);
     setErrorMessage('');
 
-    const body = {
-      topic: state.topic,
-      criteria: state.criteria,
-      sources: sources.map((s) => ({
-        title: s.title,
-        url: s.url,
-        description: s.description,
-        script: s.script,
-        cronExpression: s.cronExpression,
-        isEnabled: s.isEnabled,
-        initialItems: s.initialItems,
-      })),
-    };
+    const sourcesPayload = sources.map((s) => ({
+      title: s.title,
+      url: s.url,
+      description: s.description,
+      script: s.script,
+      cronExpression: s.cronExpression,
+      isEnabled: s.isEnabled,
+      initialItems: s.initialItems,
+    }));
 
     try {
-      const res = await fetch('/api/subscriptions', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      let createdId: string;
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        throw new Error(errText || `HTTP ${res.status}`);
+      if (state.subscriptionId) {
+        // Wizard was persisted: use complete-wizard endpoint
+        const res = await fetch(`/api/subscriptions/${state.subscriptionId}/complete-wizard`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sources: sourcesPayload, criteria: state.criteria }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          throw new Error(errText || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        createdId = data.id;
+      } else {
+        // No persisted subscription: create from scratch
+        const body = {
+          topic: state.topic,
+          criteria: state.criteria,
+          sources: sourcesPayload,
+        };
+
+        const res = await fetch('/api/subscriptions', {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          throw new Error(errText || `HTTP ${res.status}`);
+        }
+
+        const created = await res.json();
+        createdId = created.id;
       }
-
-      const created = await res.json();
 
       // Update parent state then trigger completion
       onStateChange({ generatedSources: sources });
-      onComplete(created.id);
+      onComplete(createdId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '提交失败，请重试';
       setErrorMessage(msg);

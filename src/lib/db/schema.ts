@@ -104,10 +104,32 @@ export const subscriptions = sqliteTable('subscriptions', {
   unreadCount: integer('unread_count').notNull().default(0),
   totalCount: integer('total_count').notNull().default(0),
   lastUpdatedAt: integer('last_updated_at', { mode: 'timestamp_ms' }),
+  // 创建状态：null = 正常订阅，'manual_creating' = 手动创建中，'managed_creating' = 托管创建中，'failed' = 创建失败
+  managedStatus: text('managed_status', {
+    enum: ['manual_creating', 'managed_creating', 'failed'],
+  }),
+  managedError: text('managed_error'),
+  // 存储向导中间状态，用于恢复；手动和托管均使用
+  wizardStateJson: text('wizard_state_json'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+// ─── managed_build_logs ──────────────────────────────────────────────────────
+export const managedBuildLogs = sqliteTable('managed_build_logs', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  subscriptionId: text('subscription_id')
+    .notNull()
+    .references(() => subscriptions.id, { onDelete: 'cascade' }),
+  step: text('step', { enum: ['find_sources', 'generate_script', 'complete'] }).notNull(),
+  level: text('level', { enum: ['info', 'progress', 'success', 'error'] }).notNull(),
+  message: text('message').notNull(),
+  payload: text('payload'), // JSON：关键步骤结果（foundSources 列表、脚本等）
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),
 });
@@ -261,6 +283,14 @@ export const subscriptionsRelations = relations(subscriptions, ({ one, many }) =
   sources: many(sources),
   messageCards: many(messageCards),
   notifications: many(notifications),
+  managedBuildLogs: many(managedBuildLogs),
+}));
+
+export const managedBuildLogsRelations = relations(managedBuildLogs, ({ one }) => ({
+  subscription: one(subscriptions, {
+    fields: [managedBuildLogs.subscriptionId],
+    references: [subscriptions.id],
+  }),
 }));
 
 export const sourcesRelations = relations(sources, ({ one, many }) => ({

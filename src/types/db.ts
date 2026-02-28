@@ -8,6 +8,7 @@ import type {
   messageCards,
   notifications,
   favorites,
+  managedBuildLogs,
 } from '@/lib/db/schema';
 
 export type LLMProvider = InferSelectModel<typeof llmProviders>;
@@ -32,3 +33,6 @@ export type NewNotification = InferInsertModel<typeof notifications>;
 
 export type Favorite = InferSelectModel<typeof favorites>;
 export type NewFavorite = InferInsertModel<typeof favorites>;
+
+export type ManagedBuildLog = InferSelectModel<typeof managedBuildLogs>;
+export type NewManagedBuildLog = InferInsertModel<typeof managedBuildLogs>;

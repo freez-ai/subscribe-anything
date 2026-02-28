@@ -56,6 +56,10 @@ export async function PATCH(
     if (typeof body.topic === 'string') patch.topic = body.topic.trim();
     if (typeof body.criteria === 'string') patch.criteria = body.criteria.trim() || null;
     if (typeof body.isEnabled === 'boolean') patch.isEnabled = body.isEnabled;
+    // Allow wizardStateJson update when in manual_creating state
+    if (typeof body.wizardStateJson === 'string' && existing.managedStatus === 'manual_creating') {
+      patch.wizardStateJson = body.wizardStateJson;
+    }
 
     db.update(subscriptions).set(patch).where(eq(subscriptions.id, id)).run();
 

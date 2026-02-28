@@ -257,6 +257,9 @@ export async function runMigrations() {
   // Seed default RSS instance (idempotent)
   seedRssInstance(sqlite);
 
+  // === Managed subscription creation migration ===
+  migrateManagedCreation(sqlite);
+
   // Repair: older migrations incorrectly set user_id on base system templates.
   // Base templates must always have user_id = NULL so the cleanup DELETE below ignores them.
   try {
@@ -599,4 +602,33 @@ function migrateEmailVerification(sqlite: InstanceType<typeof Database>) {
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN zeabur_api_key TEXT'); } catch { /* already exists */ }
 
   console.log('[DB] Email verification system migration complete');
+}
+
+function migrateManagedCreation(sqlite: InstanceType<typeof Database>) {
+  // Add managed creation fields to subscriptions table
+  try { sqlite.exec('ALTER TABLE subscriptions ADD COLUMN managed_status TEXT'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE subscriptions ADD COLUMN managed_error TEXT'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE subscriptions ADD COLUMN wizard_state_json TEXT'); } catch { /* already exists */ }
+
+  // Create managed_build_logs table
+  try {
+    sqlite.exec(`CREATE TABLE IF NOT EXISTS managed_build_logs (
+      id TEXT PRIMARY KEY,
+      subscription_id TEXT NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+      step TEXT NOT NULL,
+      level TEXT NOT NULL,
+      message TEXT NOT NULL,
+      payload TEXT,
+      created_at INTEGER NOT NULL
+    )`);
+    sqlite.exec('CREATE INDEX IF NOT EXISTS idx_managed_logs_sub ON managed_build_logs(subscription_id, created_at)');
+  } catch { /* already exists */ }
+
+  // 进程重启：托管创建中断的标记为失败
+  sqlite.prepare(
+    `UPDATE subscriptions SET managed_status='failed', managed_error='服务器重启，创建中断'
+     WHERE managed_status = 'managed_creating'`
+  ).run();
+
+  console.log('[DB] Managed creation migration complete');
 }

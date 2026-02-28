@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Bot,
   CheckCircle2,
   Loader2,
   Play,
@@ -25,6 +26,7 @@ interface Step3ScriptGenProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
+  onManagedCreate?: (generatedSources: GeneratedSource[]) => void;
 }
 
 type SourceStatus =
@@ -40,7 +42,7 @@ function isInProgress(s: SourceStatus | undefined): boolean {
   return !!s && (s.status === 'pending' || s.status === 'generating' || s.status === 'validating');
 }
 
-export default function Step3ScriptGen({ state, onStateChange, onNext, onBack }: Step3ScriptGenProps) {
+export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, onManagedCreate }: Step3ScriptGenProps) {
   const allSources = state.foundSources;
   const selectedSet = new Set(state.selectedIndices);
 
@@ -497,6 +499,17 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack }:
                 ? `下一步（${successSources.length} 个源就绪）`
                 : '下一步'}
           </Button>
+          {hasSuccess && !anyInProgress && onManagedCreate && (
+            <Button
+              variant="outline"
+              onClick={() => onManagedCreate(successSources)}
+              className="flex-none"
+              title="跳过确认步骤，在后台直接创建订阅"
+            >
+              <Bot className="h-4 w-4 mr-1.5" />
+              后台托管创建
+            </Button>
+          )}
         </div>
       </div>
 

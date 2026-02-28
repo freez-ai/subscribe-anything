@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,22 +12,47 @@ interface Step1TopicProps {
   onStateChange: (updates: Partial<WizardState>) => void;
   onNext: () => void;
   onBack: () => void;
+  onStep1Next?: (topic: string, criteria: string) => Promise<void>;
+  onManagedCreate?: (topic: string, criteria: string) => void;
 }
 
-export default function Step1Topic({ state, onStateChange, onNext }: Step1TopicProps) {
+export default function Step1Topic({ state, onStateChange, onNext, onStep1Next, onManagedCreate }: Step1TopicProps) {
   const [topic, setTopic] = useState(state.topic);
   const [criteria, setCriteria] = useState(state.criteria);
   const [topicError, setTopicError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const validate = (): string | null => {
     const trimmed = topic.trim();
     if (!trimmed) {
       setTopicError('请输入订阅主题');
-      return;
+      return null;
     }
     setTopicError('');
-    onStateChange({ topic: trimmed, criteria: criteria.trim() });
-    onNext();
+    return trimmed;
+  };
+
+  const handleSubmit = async () => {
+    const trimmed = validate();
+    if (!trimmed) return;
+
+    if (onStep1Next) {
+      setIsLoading(true);
+      try {
+        await onStep1Next(trimmed, criteria.trim());
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      onStateChange({ topic: trimmed, criteria: criteria.trim() });
+      onNext();
+    }
+  };
+
+  const handleManaged = () => {
+    const trimmed = validate();
+    if (!trimmed) return;
+    onManagedCreate?.(trimmed, criteria.trim());
   };
 
   return (
@@ -82,9 +108,23 @@ export default function Step1Topic({ state, onStateChange, onNext }: Step1TopicP
 
       {/* Mobile: fixed bottom; Desktop: inline */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-6">
-        <Button onClick={handleSubmit} className="w-full md:w-auto">
-          下一步
-        </Button>
+        <div className="flex gap-3">
+          <Button onClick={handleSubmit} className="flex-1 md:flex-none" disabled={isLoading}>
+            {isLoading ? '创建中...' : '下一步'}
+          </Button>
+          {onManagedCreate && (
+            <Button
+              variant="outline"
+              onClick={handleManaged}
+              disabled={isLoading}
+              className="flex-none"
+              title="AI 自动完成所有步骤，在后台创建订阅"
+            >
+              <Bot className="h-4 w-4 mr-1.5" />
+              后台托管创建
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
