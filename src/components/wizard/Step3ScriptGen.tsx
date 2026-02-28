@@ -6,8 +6,6 @@ import {
   Bot,
   BrainCircuit,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   Play,
   RotateCcw,
@@ -424,6 +422,22 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                           </Button>
                         )}
 
+                        {/* Per-source LLM log button */}
+                        {sourceLLMCalls.length > 0 && (
+                          <button
+                            onClick={() =>
+                              setLLMLogOpenFor((prev) =>
+                                prev === globalIdx ? null : globalIdx
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-xs h-7 px-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            title="查看该数据源的 LLM 调用日志"
+                          >
+                            <BrainCircuit className="h-3 w-3" />
+                            LLM调用日志
+                          </button>
+                        )}
+
                         {/* Retry button (failed) */}
                         {s.status === 'failed' && !expanded && (
                           <Button
@@ -479,31 +493,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                           </div>
                         )}
 
-                        {/* Per-source LLM log button */}
-                        {sourceLLMCalls.length > 0 && (
-                          <button
-                            onClick={() =>
-                              setLLMLogOpenFor((prev) =>
-                                prev === globalIdx ? null : globalIdx
-                              )
-                            }
-                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
-                            title="查看该数据源的 LLM 调用日志"
-                          >
-                            <BrainCircuit className="h-3 w-3" />
-                            {sourceLLMCalls.length} 次调用
-                            {sourceTotalTokens > 0 && (
-                              <span className="text-muted-foreground/60">
-                                · {sourceTotalTokens.toLocaleString()} tokens
-                              </span>
-                            )}
-                            {llmLogOpenFor === globalIdx ? (
-                              <ChevronUp className="h-3 w-3" />
-                            ) : (
-                              <ChevronDown className="h-3 w-3" />
-                            )}
-                          </button>
-                        )}
                       </div>
                     </div>
                   </div>

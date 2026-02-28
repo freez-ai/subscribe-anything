@@ -264,6 +264,16 @@ export default function Step2FindSources({
             </>
           )}
         </p>
+        {llmCalls.length > 0 && (
+          <button
+            onClick={() => setShowLLMLog(true)}
+            className="mt-1.5 inline-flex items-center gap-1 text-xs h-6 px-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            title="查看 LLM 调用日志"
+          >
+            <BrainCircuit className="h-3 w-3" />
+            LLM调用日志
+          </button>
+        )}
       </div>
 
       {/* Search progress pills */}
@@ -284,16 +294,6 @@ export default function Step2FindSources({
               <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:150ms]" />
               <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:300ms]" />
             </div>
-          )}
-          {llmCalls.length > 0 && (
-            <button
-              onClick={() => setShowLLMLog(true)}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              title="查看 LLM 调用日志"
-            >
-              <BrainCircuit className="h-3.5 w-3.5" />
-              {llmCalls.length} 次调用
-            </button>
           )}
         </div>
       )}
