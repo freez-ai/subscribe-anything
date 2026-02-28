@@ -426,9 +426,26 @@ export default function WizardShell() {
         {state.step === 3 && (
           <Step3ScriptGen
             {...stepProps}
-            onManagedCreate={(generatedSources) =>
-              handleManagedCreate({ startStep: 'complete', generatedSources })
-            }
+            onManagedCreate={(generatedSources) => {
+              const selectedSources = state.foundSources.filter((_, i) =>
+                state.selectedIndices.includes(i)
+              );
+              // If all selected sources are done, complete directly.
+              // Otherwise hand off with generate_scripts so the managed pipeline
+              // finishes the remaining sources (skipping already-completed ones).
+              if (
+                generatedSources.length > 0 &&
+                generatedSources.length >= selectedSources.length
+              ) {
+                handleManagedCreate({ startStep: 'complete', generatedSources });
+              } else {
+                handleManagedCreate({
+                  startStep: 'generate_scripts',
+                  foundSources: selectedSources,
+                  generatedSources: generatedSources.length > 0 ? generatedSources : undefined,
+                });
+              }
+            }}
             onDiscard={handleDiscard}
           />
         )}

@@ -358,7 +358,7 @@ export async function runManagedPipeline(
               writeLog(subscriptionId, 'find_sources', 'progress', `搜索：${args.query}`);
             }
           },
-          undefined,
+          (info) => upsertLLMCall(subscriptionId, info),
           userId
         );
 
@@ -390,15 +390,30 @@ export async function runManagedPipeline(
 
       const sourcesToProcess = foundSources.length > 0 ? foundSources : (initialFoundSources ?? []);
 
+      // Skip sources already provided in initialGeneratedSources (wizard handoff)
+      const alreadyDoneUrls = new Set((initialGeneratedSources ?? []).map((s) => s.url));
+      // Seed generatedSources with already-completed ones so phase 3 can create them
+      for (const done of (initialGeneratedSources ?? [])) {
+        if (!generatedSources.some((gs) => gs.url === done.url)) {
+          generatedSources.push(done);
+        }
+      }
+
       if (sourcesToProcess.length === 0) {
         writeLog(subscriptionId, 'generate_script', 'error', '没有可用的数据源，跳过脚本生成');
       } else {
-        writeLog(subscriptionId, 'generate_script', 'info', `开始为 ${sourcesToProcess.length} 个数据源生成脚本...`);
+        const pendingSources = sourcesToProcess.filter((s) => !alreadyDoneUrls.has(s.url));
+        if (pendingSources.length > 0) {
+          writeLog(subscriptionId, 'generate_script', 'info', `开始为 ${pendingSources.length} 个数据源生成脚本...`);
+        }
 
         const { generateScriptAgent } = await import('@/lib/ai/agents/generateScriptAgent');
 
         for (const source of sourcesToProcess) {
           if (isCancelled(subscriptionId)) return;
+
+          // Skip already-done sources
+          if (alreadyDoneUrls.has(source.url)) continue;
 
           writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
 
@@ -414,7 +429,7 @@ export async function runManagedPipeline(
                 if (isCancelled(subscriptionId)) return;
                 writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
               },
-              undefined,
+              (info) => upsertLLMCall(subscriptionId, info),
               userId
             );
 

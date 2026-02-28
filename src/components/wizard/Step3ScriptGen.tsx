@@ -463,7 +463,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
           <Button
             variant="outline"
             onClick={onBack}
-            disabled={anyInProgress}
             className="flex-none"
           >
             暂存
