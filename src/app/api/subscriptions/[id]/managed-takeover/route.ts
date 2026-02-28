@@ -78,6 +78,12 @@ export async function POST(
       }
     }
 
+    // If we have selected sources from info log, use them as foundSources
+    // This ensures "下一步" and "后台托管创建" behave consistently
+    if (selectedSources.length > 0) {
+      foundSources = selectedSources;
+    }
+
     // Extract generatedSources from generate_script success logs
     // Each success log has payload: { script, cronExpression }
     // We match the source by title extracted from the log message
@@ -115,10 +121,8 @@ export async function POST(
     let resumeStep: 2 | 3 = 2;
     if (foundSources.length > 0) resumeStep = 3;
 
-    // Calculate selectedIndices from selectedSources (find their indices in foundSources)
-    const selectedIndices = selectedSources.length > 0
-      ? selectedSources.map((sel) => foundSources.findIndex((s) => s.url === sel.url)).filter((i) => i >= 0)
-      : foundSources.map((_, i) => i);
+    // Since foundSources is now selectedSources (if available), select all
+    const selectedIndices = foundSources.map((_, i) => i);
 
     // Build wizard state to persist
     const wizardState = {
