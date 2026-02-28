@@ -293,8 +293,8 @@ export default function Step2FindSources({
         )}
       </div>
 
-      {/* Search progress pills */}
-      {(isStreaming || searchQueries.length > 0) && (
+      {/* Search progress pills — hide once sources are loaded */}
+      {!isDone && (isStreaming || searchQueries.length > 0) && (
         <div className="flex flex-wrap items-center gap-2">
           {searchQueries.map((q, i) => (
             <span
