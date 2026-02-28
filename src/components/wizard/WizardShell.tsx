@@ -49,8 +49,8 @@ export default function WizardShell() {
       fetch(`/api/subscriptions/${resumeId}`)
         .then((r) => r.json())
         .then(async (sub) => {
-          if (sub.managedStatus === 'managed_creating') {
-            // Take over from managed_creating: switch to manual_creating and restart current step
+          if (sub.managedStatus === 'managed_creating' || sub.managedStatus === 'failed') {
+            // Take over from managed_creating/failed: switch to manual_creating and restart current step
             await handleManagedTakeover(resumeId);
           } else if (sub.wizardStateJson) {
             try {
