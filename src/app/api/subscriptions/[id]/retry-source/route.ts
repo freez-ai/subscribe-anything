@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { subscriptions } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
 import { deleteSourceLogs, retryGenerateSourceStep } from '@/lib/managed/pipeline';
+import { clearSourceLLMCalls } from '@/lib/managed/llmCallStore';
 import type { FoundSource } from '@/types/wizard';
 
 // In-memory set to prevent duplicate concurrent retries per source
@@ -46,8 +47,9 @@ export async function POST(
       return Response.json({ running: true });
     }
 
-    // Clear old logs for this source
+    // Clear old logs and LLM calls for this source
     deleteSourceLogs(id, sourceUrl);
+    clearSourceLLMCalls(id, sourceUrl);
 
     const source: FoundSource = {
       title: sourceTitle,

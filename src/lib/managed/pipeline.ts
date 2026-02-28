@@ -14,7 +14,7 @@ import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { createSourcesForSubscription } from '@/lib/subscriptionCreator';
 import { createId } from '@paralleldrive/cuid2';
 import pLimit from 'p-limit';
-import { upsertLLMCall } from './llmCallStore';
+import { upsertLLMCall, clearLLMCalls } from './llmCallStore';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 
 // In-memory set of "subscriptionId:sourceUrl" keys that have been manually aborted.
@@ -598,6 +598,9 @@ export async function runManagedPipeline(
     // ── Phase 2: generate_scripts ─────────────────────────────────────────────
     if (startStep !== 'complete') {
       if (isCancelled(subscriptionId)) return;
+
+      // Clear old LLM calls from Phase 1 (find_sources has no sourceUrl, would clutter the store)
+      clearLLMCalls(subscriptionId);
 
       // Use selected sources for script generation, not all found sources
       // foundSources contains all discovered sources, but we want only the ones actually selected

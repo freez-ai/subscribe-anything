@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
 import { runFindSourcesStep, runGenerateScriptsStep } from '@/lib/managed/pipeline';
+import { clearLLMCalls } from '@/lib/managed/llmCallStore';
 import type { FoundSource } from '@/types/wizard';
 
 // In-memory set to prevent duplicate concurrent runs per subscription+step.
@@ -44,7 +45,8 @@ export async function POST(
     }
 
     if (step === 'find_sources') {
-      // Clear old find_sources logs to start fresh
+      // Clear old find_sources logs and LLM calls to start fresh
+      clearLLMCalls(id);
       db.delete(managedBuildLogs)
         .where(
           and(
@@ -59,7 +61,9 @@ export async function POST(
         .finally(() => runningSteps.delete(key))
         .catch(() => {});
     } else {
-      // generate_scripts: do NOT clear existing logs — runGenerateScriptsStep skips already-completed sources
+      // generate_scripts: clear old LLM calls, do NOT clear existing build logs —
+      // runGenerateScriptsStep skips already-completed sources
+      clearLLMCalls(id);
       const srcList = (sources ?? []) as FoundSource[];
 
       runningSteps.add(key);

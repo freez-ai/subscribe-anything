@@ -43,3 +43,16 @@ export function upsertLLMCall(subscriptionId: string, info: LLMCallInfo): void {
 export function clearLLMCalls(subscriptionId: string): void {
   getStore().delete(subscriptionId);
 }
+
+/** Remove all LLM calls for a specific source within a subscription. */
+export function clearSourceLLMCalls(subscriptionId: string, sourceUrl: string): void {
+  const store = getStore();
+  const calls = store.get(subscriptionId);
+  if (!calls) return;
+  const filtered = calls.filter((c) => c.sourceUrl !== sourceUrl);
+  if (filtered.length === 0) {
+    store.delete(subscriptionId);
+  } else {
+    store.set(subscriptionId, filtered);
+  }
+}
