@@ -60,10 +60,10 @@ export default function SubscriptionCard({
 
   // Step label mapping
   const stepLabels: Record<number, string> = {
-    1: '填写主题中',
-    2: '发现源中',
-    3: '生成脚本中',
-    4: '确认中',
+    1: '等待填写主题',
+    2: '等待发现源',
+    3: '等待生成脚本',
+    4: '等待确认',
   };
 
   // Step badge color classes (subtle, not prominent)
