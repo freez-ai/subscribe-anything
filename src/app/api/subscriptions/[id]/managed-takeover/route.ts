@@ -1,12 +1,12 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
+import { subscriptions } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
-import type { FoundSource, GeneratedSource } from '@/types/wizard';
+import type { FoundSource } from '@/types/wizard';
 
 // POST /api/subscriptions/[id]/managed-takeover
 // Stops the managed pipeline (by switching status to manual_creating),
-// extracts current wizard state from logs, persists it, and returns it
+// reads the current wizard state from wizardStateJson, and returns it
 // for the frontend to resume seamlessly in the wizard.
 export async function POST(
   _req: Request,
@@ -32,100 +32,26 @@ export async function POST(
       return Response.json({ alreadyDone: true, managedStatus: sub.managedStatus });
     }
 
-    // Extract wizard state from logs (ordered by time)
-    const logs = db
-      .select()
-      .from(managedBuildLogs)
-      .where(eq(managedBuildLogs.subscriptionId, id))
-      .orderBy(asc(managedBuildLogs.createdAt))
-      .all();
+    // Read wizard state directly from wizardStateJson (persisted by pipeline)
+    const wizardState = sub.wizardStateJson ? JSON.parse(sub.wizardStateJson) : null;
 
     let foundSources: FoundSource[] = [];
-    const generatedSources: GeneratedSource[] = [];
-    let findSourcesError: string | null = null;
-
-    // Extract foundSources from success log (all discovered sources)
-    // This is used for page display
-    for (const log of logs) {
-      if (log.step === 'find_sources' && log.level === 'success' && log.payload) {
-        try {
-          const payload = JSON.parse(log.payload);
-          if (Array.isArray(payload)) {
-            foundSources = payload as FoundSource[];
-            break; // Use last success log
-          }
-        } catch { /* ignore */ }
-      } else if (log.step === 'find_sources' && log.level === 'error') {
-        findSourcesError = log.message;
-      }
-    }
-
-    // Extract selected sources from info log for marking which ones are being processed
-    // Used for script generation tracking
-    let selectedSources: FoundSource[] = [];
-    for (const log of logs) {
-      if (log.step === 'find_sources' && log.level === 'info' && log.payload) {
-        // Check if this log has selected sources (auto-selected or user-selected)
-        if (log.message.includes('已自动选择') || log.message.includes('使用已选择')) {
-          try {
-            const payload = JSON.parse(log.payload);
-            if (Array.isArray(payload)) {
-              selectedSources = payload as FoundSource[];
-              break; // Use last info log
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    }
-
-    // If we have selected sources from info log, use them as foundSources
-    // This ensures "下一步" and "后台托管创建" behave consistently
-    if (selectedSources.length > 0) {
-      foundSources = selectedSources;
-    }
-
-    // Extract generatedSources from generate_script success logs
-    // Each success log has payload: { script, cronExpression }
-    // We match the source by title extracted from the log message
-    const generatedUrls = new Set<string>();
-    for (const log of logs) {
-      if (log.step === 'generate_script' && log.level === 'success' && log.payload) {
-        try {
-          const payload = JSON.parse(log.payload) as { script?: string; cronExpression?: string };
-          const titleMatch = log.message.match(/^"(.+)" 脚本生成成功/);
-          if (titleMatch && payload.script) {
-            const title = titleMatch[1];
-            const source = foundSources.find((s) => s.title === title);
-            if (source && !generatedUrls.has(source.url)) {
-              generatedUrls.add(source.url);
-              generatedSources.push({
-                title: source.title,
-                url: source.url,
-                description: source.description,
-                script: payload.script,
-                cronExpression: payload.cronExpression ?? '0 * * * *',
-                initialItems: [],
-                isEnabled: true,
-              });
-            }
-          }
-        } catch { /* ignore */ }
-      }
-    }
-
-    // Determine resume step and watch mode:
-    // - No sources found yet → watch mode (pipeline still running find_sources)
-    // - Sources found, some scripts → Step3
-    // - Sources found, no scripts → Step3
-    const watchMode = foundSources.length === 0;
+    let generatedSources = [];
     let resumeStep: 2 | 3 = 2;
-    if (foundSources.length > 0) resumeStep = 3;
 
-    // Since foundSources is now selectedSources (if available), select all
-    const selectedIndices = foundSources.map((_, i) => i);
+    if (wizardState && wizardState.step) {
+      foundSources = wizardState.foundSources ?? [];
+      generatedSources = wizardState.generatedSources ?? [];
+      // If pipeline reached step 3+ (sources found), resume at step 3
+      resumeStep = wizardState.step >= 3 ? 3 : 2;
+    }
+    // If wizardState is null or has no step, pipeline just started —
+    // return step 2 with empty data; Step2 will connect to SSE and wait.
+
+    const selectedIndices = foundSources.map((_: unknown, i: number) => i);
 
     // Build wizard state to persist
-    const wizardState = {
+    const newWizardState = {
       step: resumeStep,
       topic: sub.topic,
       criteria: sub.criteria ?? '',
@@ -133,20 +59,14 @@ export async function POST(
       selectedIndices,
       generatedSources,
       subscriptionId: id,
-      // In watch mode, Step2 polls this subscription's logs for find_sources output
-      watchingManagedId: watchMode ? id : undefined,
-      // Error message from managed pipeline (if any)
-      managedError: findSourcesError ?? sub.managedError ?? null,
+      managedError: sub.managedError ?? null,
     };
 
-    // Switch status to manual_creating.
-    // In watch mode: pipeline is still running find_sources but will stop naturally
-    // before generate_scripts (isCancelled check). Sources will be written to logs.
-    // In normal mode: pipeline is fully stopped.
+    // Switch status to manual_creating
     db.update(subscriptions)
       .set({
         managedStatus: 'manual_creating',
-        wizardStateJson: JSON.stringify(wizardState),
+        wizardStateJson: JSON.stringify(newWizardState),
         updatedAt: new Date(),
       })
       .where(eq(subscriptions.id, id))
@@ -159,7 +79,6 @@ export async function POST(
       foundSources,
       generatedSources,
       resumeStep,
-      watchMode,
     });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {

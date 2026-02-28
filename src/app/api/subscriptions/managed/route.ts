@@ -37,6 +37,17 @@ export async function POST(req: Request) {
     const now = new Date();
     let subscriptionId: string;
 
+    // Build initial wizardStateJson so takeover works even before pipeline writes state
+    const initialStep = startStep === 'find_sources' ? 2 : startStep === 'generate_scripts' ? 3 : 4;
+    const initialWizardState = JSON.stringify({
+      step: initialStep,
+      topic: topic.trim(),
+      criteria: criteria?.trim() ?? '',
+      foundSources: foundSources ?? [],
+      selectedIndices: (foundSources ?? []).map((_: unknown, i: number) => i),
+      generatedSources: generatedSources ?? [],
+    });
+
     if (existingSubscriptionId) {
       // Reuse an existing manual_creating subscription — upgrade it to managed_creating
       const existing = db
@@ -56,7 +67,7 @@ export async function POST(req: Request) {
         .set({
           managedStatus: 'managed_creating',
           managedError: null,
-          wizardStateJson: null,
+          wizardStateJson: initialWizardState,
           updatedAt: now,
         })
         .where(eq(subscriptions.id, existingSubscriptionId))
@@ -73,6 +84,7 @@ export async function POST(req: Request) {
           criteria: criteria?.trim() || null,
           isEnabled: false,
           managedStatus: 'managed_creating',
+          wizardStateJson: initialWizardState,
           unreadCount: 0,
           totalCount: 0,
           createdAt: now,

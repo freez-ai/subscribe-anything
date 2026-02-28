@@ -113,8 +113,8 @@ export default function WizardShell() {
           body: JSON.stringify({ step: 'generate_scripts', sources: foundSources }),
         });
       }
-      // resumeStep === 2: find_sources may still be running in old pipeline (watchMode = true)
-      // or already completed. Step2 will connect to SSE and pick up whatever is there.
+      // resumeStep === 2: find_sources still running or not started yet.
+      // Step2 will connect to SSE and pick up results when ready.
 
       persistToDb({ ...newState });
     } catch { /* ignore */ }
@@ -403,33 +403,11 @@ export default function WizardShell() {
             onManagedCreate={async (topic, criteria) => {
               setState((prev) => ({ ...prev, topic, criteria }));
               try {
-                const res = await fetch('/api/subscriptions/managed', {
+                await fetch('/api/subscriptions/managed', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ topic, criteria, startStep: 'find_sources' }),
                 });
-                if (res.ok) {
-                  const data = await res.json() as { id: string };
-                  // Pre-populate wizardStateJson so user can resume later without extra fetch
-                  // The managed pipeline will run in background. If user clicks card later,
-                  // managed-takeover will reconstruct state from logs.
-                  await fetch(`/api/subscriptions/${data.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      wizardStateJson: JSON.stringify({
-                        step: 2,
-                        topic,
-                        criteria,
-                        foundSources: [],
-                        selectedIndices: [],
-                        generatedSources: [],
-                        subscriptionId: data.id,
-                        watchingManagedId: data.id,
-                      }),
-                    }),
-                  });
-                }
               } catch { /* ignore */ }
               try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
               router.push('/subscriptions');

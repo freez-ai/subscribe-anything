@@ -360,6 +360,34 @@ function getCompletedSourceUrls(subscriptionId: string): Set<string> {
   }
 }
 
+// ── wizardStateJson persistence helper ───────────────────────────────────────
+
+/**
+ * Update the wizardStateJson column for a subscription so that managed-takeover
+ * can read the latest pipeline progress directly without parsing logs.
+ */
+function updateWizardState(
+  subscriptionId: string,
+  patch: Record<string, unknown>
+) {
+  try {
+    const db = getDb();
+    const row = db
+      .select({ wizardStateJson: subscriptions.wizardStateJson })
+      .from(subscriptions)
+      .where(eq(subscriptions.id, subscriptionId))
+      .get();
+    const current = row?.wizardStateJson ? JSON.parse(row.wizardStateJson) : {};
+    const merged = { ...current, ...patch };
+    db.update(subscriptions)
+      .set({ wizardStateJson: JSON.stringify(merged), updatedAt: new Date() })
+      .where(eq(subscriptions.id, subscriptionId))
+      .run();
+  } catch (err) {
+    console.error('[managed pipeline] Failed to update wizardState:', err);
+  }
+}
+
 // ── Full managed pipeline (used by "后台托管创建" button) ─────────────────────
 
 /**
@@ -451,7 +479,6 @@ export async function runManagedPipeline(
         // Otherwise auto-select from discovered sources (max 5)
         if (initialFoundSources && initialFoundSources.length > 0) {
           foundSources = initialFoundSources;
-          // Write info log with selected sources for script generation phase
           writeLog(subscriptionId, 'find_sources', 'info', `使用已选择 ${initialFoundSources.length} 个数据源`, initialFoundSources);
         } else {
           try {
@@ -459,11 +486,17 @@ export async function runManagedPipeline(
             if (Array.isArray(discovered)) {
               const selected = autoSelectSources(discovered);
               foundSources = selected;
-              // Write info log with selected sources (max 5) for script generation phase
               writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
             }
           } catch { /* ignore, will fall through to fresh run */ }
         }
+        // Persist Phase 1 result into wizardStateJson
+        updateWizardState(subscriptionId, {
+          step: 3,
+          foundSources,
+          selectedIndices: foundSources.map((_: unknown, i: number) => i),
+          generatedSources: [],
+        });
       } else {
         // Check if a find_sources task is already in progress
         const existingInfo = db
@@ -489,14 +522,19 @@ export async function runManagedPipeline(
           // If frontend passed specific sources, use them; otherwise auto-select (max 5)
           if (initialFoundSources && initialFoundSources.length > 0) {
             foundSources = initialFoundSources;
-            // Write info log with selected sources for script generation phase
             writeLog(subscriptionId, 'find_sources', 'info', `使用已选择 ${initialFoundSources.length} 个数据源`, initialFoundSources);
           } else {
             const selected = autoSelectSources(discovered);
             foundSources = selected;
-            // Write info log with selected sources (max 5) for script generation phase
             writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
           }
+          // Persist Phase 1 result into wizardStateJson
+          updateWizardState(subscriptionId, {
+            step: 3,
+            foundSources,
+            selectedIndices: foundSources.map((_: unknown, i: number) => i),
+            generatedSources: [],
+          });
         } else {
           // No existing task — run from scratch
           writeLog(subscriptionId, 'find_sources', 'info', '开始发现数据源...');
@@ -522,10 +560,15 @@ export async function runManagedPipeline(
             foundSources = selected;
 
             // Always write sources log — even if cancelled (watch mode needs to see results)
-            // First log: all discovered sources
             writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
-            // Second log: selected sources (max 5) for script generation phase
             writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
+            // Persist Phase 1 result into wizardStateJson
+            updateWizardState(subscriptionId, {
+              step: 3,
+              foundSources: selected,
+              selectedIndices: selected.map((_: unknown, i: number) => i),
+              generatedSources: [],
+            });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             writeLog(subscriptionId, 'find_sources', 'error', `发现数据源失败：${msg}`);
@@ -603,6 +646,8 @@ export async function runManagedPipeline(
                     isEnabled: true,
                   };
                   generatedSources.push(genSource);
+                  // Persist each completed source into wizardStateJson
+                  updateWizardState(subscriptionId, { generatedSources: [...generatedSources] });
                   writeLog(
                     subscriptionId,
                     'generate_script',
@@ -621,6 +666,8 @@ export async function runManagedPipeline(
                     isEnabled: true,
                   };
                   generatedSources.push(genSource);
+                  // Persist each completed source into wizardStateJson
+                  updateWizardState(subscriptionId, { generatedSources: [...generatedSources] });
                   writeLog(subscriptionId, 'generate_script', 'success', `"${source.title}" 脚本已生成（未验证）`, {
                     sourceUrl: source.url,
                     script: result.script,
@@ -652,6 +699,12 @@ export async function runManagedPipeline(
       markFailed(subscriptionId, '没有成功生成的脚本');
       return;
     }
+
+    // Persist final state before creating sources
+    updateWizardState(subscriptionId, {
+      step: 4,
+      generatedSources: sourcesToCreate,
+    });
 
     writeLog(subscriptionId, 'complete', 'info', `正在创建 ${sourcesToCreate.length} 个订阅源...`);
 
