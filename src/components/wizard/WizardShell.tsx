@@ -23,6 +23,14 @@ const DEFAULT_STATE: WizardState = {
   generatedSources: [],
 };
 
+/** Auto-select up to 5 sources: prefer recommended, fall back to all */
+function autoSelectSources(discovered: FoundSource[]): FoundSource[] {
+  const recommended = discovered.filter((s) => s.recommended);
+  const notRecommended = discovered.filter((s) => !s.recommended);
+  if (recommended.length >= 5) return recommended.slice(0, 5);
+  return [...recommended, ...notRecommended.slice(0, 5 - recommended.length)];
+}
+
 export default function WizardShell() {
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -443,7 +451,7 @@ export default function WizardShell() {
             onManagedCreate={(foundSources) =>
               handleManagedCreate({
                 startStep: foundSources.length > 0 ? 'generate_scripts' : 'find_sources',
-                foundSources: foundSources.length > 0 ? foundSources : undefined,
+                foundSources: foundSources.length > 0 ? autoSelectSources(foundSources) : undefined,
               })
             }
             onDiscard={handleDiscard}
@@ -456,6 +464,7 @@ export default function WizardShell() {
               const selectedSources = state.foundSources.filter((_, i) =>
                 state.selectedIndices.includes(i)
               );
+              const sourcesToProcess = autoSelectSources(selectedSources);
               // If all selected sources are done, complete directly.
               // Otherwise hand off with generate_scripts so the managed pipeline
               // finishes the remaining sources (skipping already-completed ones).
@@ -467,7 +476,7 @@ export default function WizardShell() {
               } else {
                 handleManagedCreate({
                   startStep: 'generate_scripts',
-                  foundSources: selectedSources,
+                  foundSources: sourcesToProcess,
                   generatedSources: generatedSources.length > 0 ? generatedSources : undefined,
                 });
               }
