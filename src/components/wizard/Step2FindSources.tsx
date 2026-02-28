@@ -383,10 +383,13 @@ export default function Step2FindSources({
               '下一步'
             )}
           </Button>
-          {isDone && sources.length > 0 && onManagedCreate && (
+          {(isStreaming || (isDone && sources.length > 0)) && onManagedCreate && (
             <Button
               variant="outline"
               onClick={() => {
+                if (isStreaming) {
+                  abortRef.current?.abort();
+                }
                 const selected = Array.from(checkedIndices).map((i) => sources[i]).filter(Boolean);
                 onManagedCreate(selected.length > 0 ? selected : sources);
               }}
@@ -394,7 +397,7 @@ export default function Step2FindSources({
               title="AI 自动完成脚本生成，在后台创建订阅"
             >
               <Bot className="h-4 w-4 mr-1.5" />
-              后台托管创建
+              {isStreaming ? '转后台托管' : '后台托管创建'}
             </Button>
           )}
         </div>

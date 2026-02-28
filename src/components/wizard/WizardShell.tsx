@@ -372,7 +372,10 @@ export default function WizardShell() {
           <Step2FindSources
             {...stepProps}
             onManagedCreate={(foundSources) =>
-              handleManagedCreate({ startStep: 'generate_scripts', foundSources })
+              handleManagedCreate({
+                startStep: foundSources.length > 0 ? 'generate_scripts' : 'find_sources',
+                foundSources: foundSources.length > 0 ? foundSources : undefined,
+              })
             }
           />
         )}
