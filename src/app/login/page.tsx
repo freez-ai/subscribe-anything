@@ -64,19 +64,17 @@ function LoginContent() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          {/* Logo */}
-          <div className="flex justify-center mb-6">
+          {/* Logo + 主标题 */}
+          <div className="flex items-center justify-center gap-3 mb-2">
             <img
               src="/favicon-32x32.png"
               alt="Logo"
               className="w-8 h-8"
             />
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+              订阅万物
+            </h1>
           </div>
-
-          {/* 主标题 - 中文 */}
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            订阅万物
-          </h1>
 
           {/* 副标题 - 英文 */}
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
