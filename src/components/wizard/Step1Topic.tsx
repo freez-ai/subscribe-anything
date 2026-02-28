@@ -117,7 +117,7 @@ export default function Step1Topic({ state, onStateChange, onNext, onStep1Next, 
               variant="outline"
               onClick={handleManaged}
               disabled={isLoading}
-              className="flex-none"
+              className="flex-none text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
               title="AI 自动完成所有步骤，在后台创建订阅"
             >
               <Bot className="h-4 w-4 mr-1.5" />
