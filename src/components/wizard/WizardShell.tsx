@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { WizardState } from '@/types/wizard';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
+import { Trash2 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { Button } from '@/components/ui/button';
 import Step1Topic from './Step1Topic';
 import Step2FindSources from './Step2FindSources';
 import Step3ScriptGen from './Step3ScriptGen';
@@ -313,37 +315,50 @@ export default function WizardShell() {
       {/* Progress Bar */}
       <div className="px-4 pt-4 pb-2 md:px-6 md:pt-6">
         {isMobile ? (
-          // Mobile: compact dots
-          <div className="flex items-center gap-2">
-            {STEP_LABELS.map((_, idx) => {
-              const stepNum = idx + 1;
-              const isActive = state.step === stepNum;
-              const isCompleted = state.step > stepNum;
-              return (
-                <div key={stepNum} className="flex items-center">
-                  <div
-                    className={[
-                      'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : isCompleted
-                          ? 'bg-primary/30 text-primary'
-                          : 'bg-muted text-muted-foreground',
-                    ].join(' ')}
-                  >
-                    {stepNum}
-                  </div>
-                  {idx < STEP_LABELS.length - 1 && (
+          // Mobile: compact dots + discard button on the right
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {STEP_LABELS.map((_, idx) => {
+                const stepNum = idx + 1;
+                const isActive = state.step === stepNum;
+                const isCompleted = state.step > stepNum;
+                return (
+                  <div key={stepNum} className="flex items-center">
                     <div
                       className={[
-                        'w-6 h-0.5 mx-0.5 transition-colors',
-                        isCompleted ? 'bg-primary/50' : 'bg-muted',
+                        'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
+                        isActive
+                          ? 'bg-primary text-primary-foreground'
+                          : isCompleted
+                            ? 'bg-primary/30 text-primary'
+                            : 'bg-muted text-muted-foreground',
                       ].join(' ')}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                    >
+                      {stepNum}
+                    </div>
+                    {idx < STEP_LABELS.length - 1 && (
+                      <div
+                        className={[
+                          'w-6 h-0.5 mx-0.5 transition-colors',
+                          isCompleted ? 'bg-primary/50' : 'bg-muted',
+                        ].join(' ')}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {state.step > 1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDiscard}
+                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                title="丢弃此次订阅创建"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         ) : (
           // Desktop: steps with labels

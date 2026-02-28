@@ -470,7 +470,7 @@ export default function Step2FindSources({
               variant="ghost"
               size="icon"
               onClick={onDiscard}
-              className="flex-none text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              className="hidden md:inline-flex flex-none text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               title="丢弃此次订阅创建"
             >
               <Trash2 className="h-4 w-4" />
