@@ -523,32 +523,34 @@ export async function runManagedPipeline(
           // Task is in progress — wait for it to finish
           writeLog(subscriptionId, 'find_sources', 'info', '等待数据源发现任务完成...');
           const discovered = await waitForFindSourcesResult(subscriptionId, () => isCancelled(subscriptionId));
-          if (!discovered || isCancelled(subscriptionId)) {
-            markFailed(subscriptionId, '发现数据源失败或超时');
-            return;
+          if (isCancelled(subscriptionId)) return;
+          if (discovered) {
+            allFoundSources = discovered;
+            // If frontend passed specific sources, use them; otherwise auto-select (max 5)
+            if (initialFoundSources && initialFoundSources.length > 0) {
+              foundSources = initialFoundSources;
+              writeLog(subscriptionId, 'find_sources', 'info', `使用已选择 ${initialFoundSources.length} 个数据源`, initialFoundSources);
+            } else {
+              const selected = autoSelectSources(discovered);
+              foundSources = selected;
+              writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
+            }
+            // Persist Phase 1 result into wizardStateJson
+            const selectedUrls2 = new Set(foundSources.map((s) => s.url));
+            updateWizardState(subscriptionId, {
+              step: 3,
+              foundSources: allFoundSources,
+              selectedIndices: allFoundSources
+                .map((s: FoundSource, i: number) => selectedUrls2.has(s.url) ? i : -1)
+                .filter((i: number) => i >= 0),
+              generatedSources: [],
+            });
           }
-          allFoundSources = discovered;
-          // If frontend passed specific sources, use them; otherwise auto-select (max 5)
-          if (initialFoundSources && initialFoundSources.length > 0) {
-            foundSources = initialFoundSources;
-            writeLog(subscriptionId, 'find_sources', 'info', `使用已选择 ${initialFoundSources.length} 个数据源`, initialFoundSources);
-          } else {
-            const selected = autoSelectSources(discovered);
-            foundSources = selected;
-            writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
-          }
-          // Persist Phase 1 result into wizardStateJson
-          const selectedUrls2 = new Set(foundSources.map((s) => s.url));
-          updateWizardState(subscriptionId, {
-            step: 3,
-            foundSources: allFoundSources,
-            selectedIndices: allFoundSources
-              .map((s: FoundSource, i: number) => selectedUrls2.has(s.url) ? i : -1)
-              .filter((i: number) => i >= 0),
-            generatedSources: [],
-          });
-        } else {
-          // No existing task — run from scratch
+          // If wait failed/timed out, fall through to run from scratch below
+        }
+
+        if (foundSources.length === 0 && !isCancelled(subscriptionId)) {
+          // No existing results or previous attempt failed — run from scratch
           writeLog(subscriptionId, 'find_sources', 'info', '开始发现数据源...');
 
           try {
