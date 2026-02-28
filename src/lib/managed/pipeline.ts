@@ -182,8 +182,6 @@ export async function runFindSourcesStep(
     const selected = autoSelectSources(discovered);
     // Write success log with all discovered sources (for reference)
     writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
-    // Write separate log with selected sources (max 5) for script generation phase
-    writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     writeLog(subscriptionId, 'find_sources', 'error', `发现数据源失败：${msg}`);
@@ -566,8 +564,7 @@ export async function runManagedPipeline(
             if (Array.isArray(discovered)) {
               const selected = autoSelectSources(discovered);
               foundSources = selected;
-              writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
-            }
+                          }
           } catch { /* ignore, will fall through to fresh run */ }
         }
         // Persist Phase 1 result into wizardStateJson
@@ -609,8 +606,7 @@ export async function runManagedPipeline(
             } else {
               const selected = autoSelectSources(discovered);
               foundSources = selected;
-              writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
-            }
+                          }
             // Persist Phase 1 result into wizardStateJson
             const selectedUrls2 = new Set(foundSources.map((s) => s.url));
             updateWizardState(subscriptionId, {
@@ -652,8 +648,7 @@ export async function runManagedPipeline(
 
             // Always write sources log — even if cancelled (watch mode needs to see results)
             writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
-            writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
-            // Persist Phase 1 result into wizardStateJson
+                        // Persist Phase 1 result into wizardStateJson
             const selectedUrls3 = new Set(selected.map((s) => s.url));
             updateWizardState(subscriptionId, {
               step: 3,
