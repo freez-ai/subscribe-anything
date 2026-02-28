@@ -447,15 +447,23 @@ export async function runManagedPipeline(
 
       if (existingSuccess?.payload) {
         // Already completed — reuse results
-        try {
-          const discovered = JSON.parse(existingSuccess.payload) as FoundSource[];
-          if (Array.isArray(discovered)) {
-            const selected = autoSelectSources(discovered);
-            foundSources = selected;
-            // Write info log with selected sources (max 5) for script generation phase
-            writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
-          }
-        } catch { /* ignore, will fall through to fresh run */ }
+        // If frontend passed specific sources (initialFoundSources), use them
+        // Otherwise auto-select from discovered sources (max 5)
+        if (initialFoundSources && initialFoundSources.length > 0) {
+          foundSources = initialFoundSources;
+          // Write info log with selected sources for script generation phase
+          writeLog(subscriptionId, 'find_sources', 'info', `使用已选择 ${initialFoundSources.length} 个数据源`, initialFoundSources);
+        } else {
+          try {
+            const discovered = JSON.parse(existingSuccess.payload) as FoundSource[];
+            if (Array.isArray(discovered)) {
+              const selected = autoSelectSources(discovered);
+              foundSources = selected;
+              // Write info log with selected sources (max 5) for script generation phase
+              writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
+            }
+          } catch { /* ignore, will fall through to fresh run */ }
+        }
       } else {
         // Check if a find_sources task is already in progress
         const existingInfo = db
@@ -478,10 +486,17 @@ export async function runManagedPipeline(
             markFailed(subscriptionId, '发现数据源失败或超时');
             return;
           }
-          const selected = autoSelectSources(discovered);
-          foundSources = selected;
-          // Write info log with selected sources (max 5) for script generation phase
-          writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
+          // If frontend passed specific sources, use them; otherwise auto-select (max 5)
+          if (initialFoundSources && initialFoundSources.length > 0) {
+            foundSources = initialFoundSources;
+            // Write info log with selected sources for script generation phase
+            writeLog(subscriptionId, 'find_sources', 'info', `使用已选择 ${initialFoundSources.length} 个数据源`, initialFoundSources);
+          } else {
+            const selected = autoSelectSources(discovered);
+            foundSources = selected;
+            // Write info log with selected sources (max 5) for script generation phase
+            writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
+          }
         } else {
           // No existing task — run from scratch
           writeLog(subscriptionId, 'find_sources', 'info', '开始发现数据源...');

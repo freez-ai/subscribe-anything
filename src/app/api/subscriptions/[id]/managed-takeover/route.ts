@@ -44,35 +44,34 @@ export async function POST(
     const generatedSources: GeneratedSource[] = [];
     let findSourcesError: string | null = null;
 
-    // Extract foundSources from logs:
-    // 1. Find "已自动选择 X 个数据源" info log (has selected sources, max 5)
-    // 2. Fall back to success log with all sources
+    // Extract foundSources from success log (all discovered sources)
+    // This is used for page display
     for (const log of logs) {
-      if (log.step === 'find_sources') {
-        if (log.level === 'info' && log.message.includes('已自动选择') && log.payload) {
-          // Found the info log with selected sources (max 5)
-          try {
-            const payload = JSON.parse(log.payload);
-            if (Array.isArray(payload)) {
-              foundSources = payload as FoundSource[];
-              break; // Use this one
-            }
-          } catch { /* ignore */ }
-        } else if (log.level === 'error') {
-          findSourcesError = log.message;
-        }
+      if (log.step === 'find_sources' && log.level === 'success' && log.payload) {
+        try {
+          const payload = JSON.parse(log.payload);
+          if (Array.isArray(payload)) {
+            foundSources = payload as FoundSource[];
+            break; // Use last success log
+          }
+        } catch { /* ignore */ }
+      } else if (log.step === 'find_sources' && log.level === 'error') {
+        findSourcesError = log.message;
       }
     }
 
-    // If no info log with selected sources, fall back to success log
-    if (foundSources.length === 0) {
-      for (const log of logs) {
-        if (log.step === 'find_sources' && log.level === 'success' && log.payload) {
+    // Extract selected sources from info log for marking which ones are being processed
+    // Used for script generation tracking
+    let selectedSources: FoundSource[] = [];
+    for (const log of logs) {
+      if (log.step === 'find_sources' && log.level === 'info' && log.payload) {
+        // Check if this log has selected sources (auto-selected or user-selected)
+        if (log.message.includes('已自动选择') || log.message.includes('使用已选择')) {
           try {
             const payload = JSON.parse(log.payload);
             if (Array.isArray(payload)) {
-              foundSources = payload as FoundSource[];
-              break; // Use last success log
+              selectedSources = payload as FoundSource[];
+              break; // Use last info log
             }
           } catch { /* ignore */ }
         }
@@ -116,13 +115,18 @@ export async function POST(
     let resumeStep: 2 | 3 = 2;
     if (foundSources.length > 0) resumeStep = 3;
 
+    // Calculate selectedIndices from selectedSources (find their indices in foundSources)
+    const selectedIndices = selectedSources.length > 0
+      ? selectedSources.map((sel) => foundSources.findIndex((s) => s.url === sel.url)).filter((i) => i >= 0)
+      : foundSources.map((_, i) => i);
+
     // Build wizard state to persist
     const wizardState = {
       step: resumeStep,
       topic: sub.topic,
       criteria: sub.criteria ?? '',
       foundSources,
-      selectedIndices: foundSources.map((_, i) => i),
+      selectedIndices,
       generatedSources,
       subscriptionId: id,
       // In watch mode, Step2 polls this subscription's logs for find_sources output
