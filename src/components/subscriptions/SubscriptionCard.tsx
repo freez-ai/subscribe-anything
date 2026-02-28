@@ -33,6 +33,7 @@ function formatRelativeTime(date: Date | null | undefined): string {
 
 const SWIPE_THRESHOLD = 100;
 const SWIPE_MAX = 180; // Width for both toggle and delete buttons
+const DELETE_ONLY_WIDTH = 96; // Width for delete-only state (w-24 = 6rem)
 
 export default function SubscriptionCard({
   subscription,
@@ -153,7 +154,7 @@ export default function SubscriptionCard({
         className="absolute inset-y-0 right-0 flex transition-transform"
         style={{
           transform: `translateX(${swipeX + SWIPE_MAX}px)`,
-          width: `${!isManagedCreating && !isManualCreating && !isFailed ? SWIPE_MAX : SWIPE_MAX / 2}px`,
+          width: `${!isManagedCreating && !isManualCreating && !isFailed ? SWIPE_MAX : DELETE_ONLY_WIDTH}px`,
         }}
       >
         {/* Toggle button (left side) - only for non-creating cards */}
