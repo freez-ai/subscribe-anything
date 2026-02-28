@@ -396,13 +396,23 @@ export default function WizardShell() {
           <Step1Topic
             {...stepProps}
             onStep1Next={handleStep1Next}
-            onManagedCreate={(topic, criteria) => {
+            onManagedCreate={async (topic, criteria) => {
               setState((prev) => ({ ...prev, topic, criteria }));
-              fetch('/api/subscriptions/managed', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic, criteria, startStep: 'find_sources' }),
-              }).catch(() => {});
+              try {
+                const res = await fetch('/api/subscriptions/managed', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ topic, criteria, startStep: 'find_sources' }),
+                });
+                if (res.ok) {
+                  const { id } = await res.json() as { id: string };
+                  // Immediately call managed-takeover so the subscription transitions to
+                  // manual_creating with wizardStateJson:{step:2,watchingManagedId}.
+                  // When the user taps the card again, WizardShell will load step 2
+                  // directly from wizardStateJson (no extra async round-trip → no flash).
+                  await fetch(`/api/subscriptions/${id}/managed-takeover`, { method: 'POST' });
+                }
+              } catch { /* ignore */ }
               try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
               router.push('/subscriptions');
             }}
