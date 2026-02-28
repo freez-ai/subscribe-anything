@@ -156,10 +156,10 @@ export default function SubscriptionCard({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-xs text-amber-600 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                className="h-7 px-2 text-xs text-blue-600 border-blue-400/50 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50"
                 onClick={handleCardClick}
               >
-                接管
+                {managedStatus === 'managed_creating' ? '接管' : '继续创建'}
               </Button>
               <Button
                 variant="ghost"
