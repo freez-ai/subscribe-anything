@@ -263,7 +263,7 @@ export default function SubscriptionCard({
           {/* Actions — stop propagation so clicks don't navigate */}
           <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
             {isManagedCreating ? (
-              // Managed creating state: show takeover + discard buttons
+              // Managed creating state: show takeover + discard buttons (desktop only discard)
               <>
                 <Button
                   variant="outline"
@@ -276,7 +276,7 @@ export default function SubscriptionCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  className="hidden h-8 w-8 text-muted-foreground hover:text-destructive md:flex"
                   onClick={() => onDiscard?.(subscription.id)}
                   aria-label="丢弃"
                 >
