@@ -459,7 +459,7 @@ export default function Step2FindSources({
               title="AI 自动完成脚本生成，在后台创建订阅"
             >
               <BotIcon className="h-4 w-4 mr-1.5" />
-              {isStreaming ? '后台完成' : '帮我完成'}
+              帮我完成
             </Button>
           )}
           <Button variant="outline" onClick={onBack} className="flex-none">

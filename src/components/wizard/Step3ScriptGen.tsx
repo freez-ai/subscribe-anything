@@ -558,7 +558,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                 : '跳过确认步骤，在后台直接创建订阅'}
             >
               <Bot className="h-4 w-4 mr-1.5" />
-              {anyInProgress ? '后台完成' : '帮我完成'}
+              帮我完成
             </Button>
           )}
           <Button
