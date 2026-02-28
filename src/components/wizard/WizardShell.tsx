@@ -396,15 +396,13 @@ export default function WizardShell() {
           <Step1Topic
             {...stepProps}
             onStep1Next={handleStep1Next}
-            onManagedCreate={async (topic, criteria) => {
+            onManagedCreate={(topic, criteria) => {
               setState((prev) => ({ ...prev, topic, criteria }));
-              try {
-                await fetch('/api/subscriptions/managed', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ topic, criteria, startStep: 'find_sources' }),
-                });
-              } catch { /* ignore */ }
+              fetch('/api/subscriptions/managed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic, criteria, startStep: 'find_sources' }),
+              }).catch(() => {});
               try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
               router.push('/subscriptions');
             }}

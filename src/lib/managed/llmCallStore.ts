@@ -2,18 +2,32 @@
  * In-memory store for LLM call debug info, keyed by subscriptionId.
  * Populated by pipeline.ts during background step execution.
  * Exposed via GET /api/subscriptions/[id]/llm-calls for wizard debug UI.
+ *
+ * Uses globalThis so the store survives Next.js dev-mode module re-evaluations
+ * (different route bundles would otherwise get separate Map instances).
  */
 
 import type { LLMCallInfo } from '@/lib/ai/client';
 
-const store = new Map<string, LLMCallInfo[]>();
+declare global {
+  // eslint-disable-next-line no-var
+  var __llmCallStore: Map<string, LLMCallInfo[]> | undefined;
+}
+
+function getStore(): Map<string, LLMCallInfo[]> {
+  if (!globalThis.__llmCallStore) {
+    globalThis.__llmCallStore = new Map();
+  }
+  return globalThis.__llmCallStore;
+}
 
 export function getLLMCalls(subscriptionId: string): LLMCallInfo[] {
-  return store.get(subscriptionId) ?? [];
+  return getStore().get(subscriptionId) ?? [];
 }
 
 /** Insert or update a call (matched by sourceUrl + callIndex to avoid conflicts during parallel generation). */
 export function upsertLLMCall(subscriptionId: string, info: LLMCallInfo): void {
+  const store = getStore();
   const calls = store.get(subscriptionId) ?? [];
   const idx = calls.findIndex(
     (c) => c.callIndex === info.callIndex && c.sourceUrl === info.sourceUrl
@@ -27,5 +41,5 @@ export function upsertLLMCall(subscriptionId: string, info: LLMCallInfo): void {
 }
 
 export function clearLLMCalls(subscriptionId: string): void {
-  store.delete(subscriptionId);
+  getStore().delete(subscriptionId);
 }
