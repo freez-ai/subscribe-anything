@@ -60,7 +60,7 @@ export default function Step2FindSources({
   const [isDone, setIsDone] = useState(state.foundSources.length > 0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSearchProviderError, setIsSearchProviderError] = useState(false);
-  const [llmCalls, setLLMCalls] = useState<LLMCallInfo[]>([]);
+  const [llmCalls, setLLMCalls] = useState<LLMCallInfo[]>(state.step2LlmCalls ?? []);
   const [showLLMLog, setShowLLMLog] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const seenQueriesRef = useRef(new Set<string>());
@@ -73,13 +73,18 @@ export default function Step2FindSources({
       fetch(`/api/subscriptions/${subId}/llm-calls`)
         .then((r) => r.json())
         .then((data: { calls?: LLMCallInfo[] }) => {
-          if (data.calls) setLLMCalls(data.calls);
+          if (data.calls && data.calls.length > 0) {
+            setLLMCalls(data.calls);
+            // 同步到 wizard state，确保暂存/重入向导时能从 DB 恢复
+            onStateChange({ step2LlmCalls: data.calls });
+          }
         })
         .catch(() => {});
     };
     poll();
     const timer = setInterval(poll, 2000);
     return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.subscriptionId]);
 
   const connectSSE = () => {
@@ -206,6 +211,8 @@ export default function Step2FindSources({
     seenQueriesRef.current.clear();
     setErrorMessage('');
     setIsSearchProviderError(false);
+    setLLMCalls([]);
+    onStateChange({ step2LlmCalls: [] });
 
     // Restart find_sources step in background (clears old logs)
     await fetch(`/api/subscriptions/${state.subscriptionId}/run-step`, {

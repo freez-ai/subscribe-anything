@@ -214,6 +214,8 @@ export default function WizardShell() {
   // Does NOT delete the subscription — background steps keep running.
   // User can resume later by clicking the card in the list.
   const handleBack = () => {
+    // Persist current state (incl. foundSources + step2LlmCalls) before leaving
+    persistToDb(state);
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch { /* ignore */ }
