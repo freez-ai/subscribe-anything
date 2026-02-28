@@ -438,8 +438,9 @@ export default function Step2FindSources({
               onClick={() => {
                 abortRef.current?.abort();
                 const selected = Array.from(checkedIndices).map((i) => sources[i]).filter(Boolean);
-                onManagedCreate(selected.length > 0 ? selected : sources);
+                onManagedCreate(selected);
               }}
+              disabled={isDone && selectedCount === 0}
               className="flex-none"
               title="AI 自动完成脚本生成，在后台创建订阅"
             >

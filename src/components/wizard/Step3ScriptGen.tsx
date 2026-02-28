@@ -423,7 +423,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                         )}
 
                         {/* Per-source LLM log button */}
-                        {sourceLLMCalls.length > 0 && (
+                        {(s.status === 'failed' || s.status === 'success' || sourceLLMCalls.length > 0) && (
                           <button
                             onClick={() =>
                               setLLMLogOpenFor((prev) =>
