@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { WizardState } from '@/types/wizard';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
@@ -29,9 +29,16 @@ export default function WizardShell() {
   const [state, setState] = useState<WizardState>(DEFAULT_STATE);
   const [mounted, setMounted] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const initRef = useRef(false);
 
   // Mount: handle new / resume-by-id / session-restore
   useEffect(() => {
+    // Prevent double-execution in React StrictMode — sessionStorage values
+    // are consumed (removed) on first run, so a second run would miss them
+    // and incorrectly fall through to the default step-1 state.
+    if (initRef.current) return;
+    initRef.current = true;
+
     const isNew = sessionStorage.getItem('wizard-new') === '1';
     sessionStorage.removeItem('wizard-new');
 
