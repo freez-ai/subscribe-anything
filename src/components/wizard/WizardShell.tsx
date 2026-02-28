@@ -376,6 +376,7 @@ export default function WizardShell() {
           <Step2FindSources
             {...stepProps}
             autoStart={step2AutoStart}
+            watchSubscriptionId={state.watchingManagedId}
             onManagedCreate={(foundSources) =>
               handleManagedCreate({
                 startStep: foundSources.length > 0 ? 'generate_scripts' : 'find_sources',

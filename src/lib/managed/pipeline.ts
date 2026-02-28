@@ -100,10 +100,9 @@ export async function runManagedPipeline(
             if (e.type === 'tool_call' && e.name === 'webSearch') {
               const args = e.args as { query: string };
               writeLog(subscriptionId, 'find_sources', 'progress', `搜索：${args.query}`);
-            } else if (e.type === 'sources') {
-              const sources = e.sources as FoundSource[];
-              writeLog(subscriptionId, 'find_sources', 'success', `发现 ${sources.length} 个数据源`, sources);
             }
+            // NOTE: sources are written AFTER findSourcesAgent returns (see below),
+            // so they're always persisted even if cancelled mid-stream (for watch mode).
           },
           undefined,
           userId
@@ -120,6 +119,8 @@ export async function runManagedPipeline(
         }
         foundSources = selected;
 
+        // Always write sources log — even if cancelled (watch mode needs to see results)
+        writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
         writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

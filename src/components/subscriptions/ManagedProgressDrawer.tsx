@@ -124,7 +124,9 @@ export default function ManagedProgressDrawer({
         foundSources: result.foundSources ?? [],
         selectedIndices: (result.foundSources ?? []).map((_: unknown, i: number) => i),
         generatedSources: result.generatedSources ?? [],
-        subscriptionId: result.id, // reuse existing subscription
+        subscriptionId: result.id,
+        // Watch mode: Step2 will poll find_sources logs instead of re-running
+        watchingManagedId: result.watchMode ? result.id : undefined,
       };
       sessionStorage.setItem('wizard-state', JSON.stringify(wizardState));
       onClose();

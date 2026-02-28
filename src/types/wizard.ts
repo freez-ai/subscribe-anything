@@ -27,4 +27,5 @@ export interface WizardState {
   selectedIndices: number[];
   generatedSources: GeneratedSource[];
   subscriptionId?: string; // Step1 完成后写入，用于后续步骤的 DB 持久化
+  watchingManagedId?: string; // 监听模式：接管 find_sources 时设置，Step2 轮询此订阅的日志
 }

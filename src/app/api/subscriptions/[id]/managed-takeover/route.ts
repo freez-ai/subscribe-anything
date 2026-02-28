@@ -82,10 +82,11 @@ export async function POST(
       }
     }
 
-    // Determine resume step:
-    // - Some scripts generated → Step3 (continue generating remaining)
-    // - Only sources found → Step3 (start generating)
-    // - Nothing yet → Step2
+    // Determine resume step and watch mode:
+    // - No sources found yet → watch mode (pipeline still running find_sources)
+    // - Sources found, some scripts → Step3
+    // - Sources found, no scripts → Step3
+    const watchMode = foundSources.length === 0;
     let resumeStep: 2 | 3 = 2;
     if (foundSources.length > 0) resumeStep = 3;
 
@@ -98,10 +99,14 @@ export async function POST(
       selectedIndices: foundSources.map((_, i) => i),
       generatedSources,
       subscriptionId: id,
+      // In watch mode, Step2 polls this subscription's logs for find_sources output
+      watchingManagedId: watchMode ? id : undefined,
     };
 
-    // Switch status to manual_creating (stops the pipeline via isCancelled check)
-    // and persist wizard state so the card can be resumed if user closes browser
+    // Switch status to manual_creating.
+    // In watch mode: pipeline is still running find_sources but will stop naturally
+    // before generate_scripts (isCancelled check). Sources will be written to logs.
+    // In normal mode: pipeline is fully stopped.
     db.update(subscriptions)
       .set({
         managedStatus: 'manual_creating',
@@ -118,6 +123,7 @@ export async function POST(
       foundSources,
       generatedSources,
       resumeStep,
+      watchMode,
     });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {

@@ -19,6 +19,9 @@ interface Step2FindSourcesProps {
   // When true (default), auto-start streaming if no cached sources.
   // Set to false when resuming from takeover/restore so the user can choose.
   autoStart?: boolean;
+  // When set, poll this subscription's managed-progress logs instead of streaming.
+  // Used for seamless takeover during find_sources phase.
+  watchSubscriptionId?: string;
 }
 
 function defaultSelection(sources: FoundSource[]): Set<number> {
@@ -37,6 +40,7 @@ export default function Step2FindSources({
   onBack,
   onManagedCreate,
   autoStart = true,
+  watchSubscriptionId,
 }: Step2FindSourcesProps) {
   const [searchQueries, setSearchQueries] = useState<string[]>([]);
   const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
@@ -51,17 +55,94 @@ export default function Step2FindSources({
     if (state.foundSources.length > 0) return defaultSelection(state.foundSources);
     return new Set();
   });
-  // started: true if streaming has been initiated at least once (or sources already exist)
-  const [started, setStarted] = useState(autoStart || state.foundSources.length > 0);
+  // started: true if streaming/watching has been initiated, or sources already exist
+  const [started, setStarted] = useState(
+    autoStart || !!watchSubscriptionId || state.foundSources.length > 0
+  );
   const [isStreaming, setIsStreaming] = useState(
-    state.foundSources.length === 0 && autoStart
+    (state.foundSources.length === 0 && autoStart) || !!watchSubscriptionId
   );
   const [isDone, setIsDone] = useState(state.foundSources.length > 0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSearchProviderError, setIsSearchProviderError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const watchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ── Watch mode: poll managed-progress for find_sources completion ─────────
+  useEffect(() => {
+    if (!watchSubscriptionId) return;
+
+    let seenQueries = new Set<string>();
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/subscriptions/${watchSubscriptionId}/managed-progress`);
+        if (!res.ok) return;
+        const data: {
+          status: string | null;
+          logs: { step: string; level: string; message: string; payload: unknown }[];
+        } = await res.json();
+
+        // Extract search queries from progress logs (message format: '搜索：<query>')
+        const newQueries: string[] = [];
+        for (const log of data.logs) {
+          if (log.step === 'find_sources' && log.level === 'progress' && log.message.startsWith('搜索：')) {
+            const q = log.message.slice(3);
+            if (!seenQueries.has(q)) {
+              seenQueries.add(q);
+              newQueries.push(q);
+            }
+          }
+        }
+        if (newQueries.length > 0) {
+          setSearchQueries((prev) => [...prev, ...newQueries]);
+        }
+
+        // Check for find_sources success log (contains sources payload)
+        const successLog = data.logs.find(
+          (l) => l.step === 'find_sources' && l.level === 'success' && Array.isArray(l.payload)
+        );
+        if (successLog) {
+          const allSources = successLog.payload as FoundSource[];
+          const sel = defaultSelection(allSources);
+          setSources(allSources);
+          setCheckedIndices(sel);
+          setIsDone(true);
+          setIsStreaming(false);
+          // Persist sources into wizard state and clear watch mode
+          onStateChange({
+            foundSources: allSources,
+            selectedIndices: Array.from(sel).sort((a, b) => a - b),
+            watchingManagedId: undefined,
+          });
+          if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
+          return;
+        }
+
+        // Check for error log
+        const errorLog = data.logs.find(
+          (l) => l.step === 'find_sources' && l.level === 'error'
+        );
+        if (errorLog) {
+          setErrorMessage(errorLog.message);
+          setIsStreaming(false);
+          onStateChange({ watchingManagedId: undefined });
+          if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
+        }
+      } catch { /* ignore */ }
+    };
+
+    poll();
+    watchIntervalRef.current = setInterval(poll, 1500);
+    return () => {
+      if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchSubscriptionId]);
+
+  // ── Normal streaming mode ─────────────────────────────────────────────────
   const startStream = async () => {
+    if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
     setSearchQueries([]);
     setLlmCalls([]);
     setTotalTokens(0);
@@ -156,7 +237,6 @@ export default function Step2FindSources({
           }
           return [...prev, info];
         });
-        // Accumulate tokens once per completed call
         if (!info.streaming && info.usage?.total && !countedCallsRef.current.has(info.callIndex)) {
           countedCallsRef.current.add(info.callIndex);
           setTotalTokens((prev) => prev + info.usage!.total);
@@ -179,8 +259,8 @@ export default function Step2FindSources({
   };
 
   useEffect(() => {
-    // Auto-start only when coming from Step1 (autoStart=true) and no cached sources
-    if (state.foundSources.length === 0 && autoStart) {
+    // Auto-start only when coming from Step1 (autoStart=true), no watch mode, no cached sources
+    if (state.foundSources.length === 0 && autoStart && !watchSubscriptionId) {
       startStream();
     }
     return () => {
@@ -216,6 +296,8 @@ export default function Step2FindSources({
 
   const selectedCount = checkedIndices.size;
   const recommendedCount = sources.filter((s) => s.recommended).length;
+  // During watch mode polling, disable managed button to avoid pipeline conflicts
+  const isWatching = !!watchSubscriptionId && isStreaming;
 
   return (
     <div className="flex flex-col gap-4 pt-4">
@@ -230,6 +312,9 @@ export default function Step2FindSources({
             </>
           )}
         </p>
+        {isWatching && (
+          <p className="text-xs text-amber-600 mt-1">正在从托管进度中接管，等待 AI 完成搜索…</p>
+        )}
       </div>
 
       {/* Search progress pills */}
@@ -254,7 +339,7 @@ export default function Step2FindSources({
         </div>
       )}
 
-      {/* LLM log button */}
+      {/* LLM log button (only for direct streaming, not watch mode) */}
       {llmCalls.length > 0 && (
         <button
           className="self-start flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
@@ -279,13 +364,13 @@ export default function Step2FindSources({
               配置后重试
             </p>
           )}
-          <Button variant="outline" size="sm" className="mt-3" onClick={startStream}>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => { setStarted(true); startStream(); }}>
             重试
           </Button>
         </div>
       )}
 
-      {/* Initial state: not yet started (e.g. restored from takeover) */}
+      {/* Initial state: not yet started (restored without watch mode) */}
       {!started && !isStreaming && !isDone && !errorMessage && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
           <p>点击"开始分析"让 AI 发现合适的数据源</p>
@@ -373,7 +458,7 @@ export default function Step2FindSources({
       {started && !isStreaming && isDone && sources.length === 0 && !errorMessage && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-3">
           <p>没有找到数据源</p>
-          <Button variant="outline" size="sm" onClick={startStream}>
+          <Button variant="outline" size="sm" onClick={() => { setStarted(true); startStream(); }}>
             重试
           </Button>
         </div>
@@ -394,7 +479,7 @@ export default function Step2FindSources({
               {!isDone && !errorMessage ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  分析中
+                  {isWatching ? '等待结果...' : '分析中'}
                 </>
               ) : selectedCount > 0 ? (
                 `下一步（${selectedCount} 个源）`
@@ -410,11 +495,12 @@ export default function Step2FindSources({
               开始分析
             </Button>
           )}
-          {onManagedCreate && (
+          {onManagedCreate && !isWatching && (
             <Button
               variant="outline"
               onClick={() => {
                 abortRef.current?.abort();
+                if (watchIntervalRef.current) clearInterval(watchIntervalRef.current);
                 const selected = Array.from(checkedIndices).map((i) => sources[i]).filter(Boolean);
                 onManagedCreate(selected.length > 0 ? selected : sources);
               }}
