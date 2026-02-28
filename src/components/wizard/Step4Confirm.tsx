@@ -315,7 +315,7 @@ export default function Step4Confirm({
       )}
 
       {/* Mobile: fixed bottom; Desktop: inline */}
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
+      <div className="fixed bottom-0 left-0 right-0 px-4 pt-3 pb-[calc(4rem+env(safe-area-inset-bottom))] bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
         <div className="flex gap-3">
           <Button
             onClick={handleSubmit}

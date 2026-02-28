@@ -320,16 +320,16 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-4 pt-4">
-      <div>
+    <div className="flex flex-col gap-4 pt-4 h-[calc(100vh-10rem)] md:h-auto">
+      <div className="flex-shrink-0">
         <h2 className="text-xl font-semibold mb-1">生成采集脚本</h2>
         <p className="text-sm text-muted-foreground">
           AI 正在为已选数据源并行生成并验证采集脚本，未选中的数据源可手动开始
         </p>
       </div>
 
-      <ScrollArea className="h-[52vh] md:h-[48vh]">
-        <div className="flex flex-col gap-3 pr-2">
+      <ScrollArea className="flex-1 min-h-0 md:h-[48vh] md:flex-none">
+        <div className="flex flex-col gap-3 pr-2 overflow-hidden">
           {allSources.map((source, globalIdx) => {
             const s = sourceStatuses[globalIdx] ?? { status: 'skipped' as const };
             const inProgress = isInProgress(s);
@@ -532,7 +532,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
       )}
 
       {/* Bottom bar */}
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
+      <div className="fixed bottom-0 left-0 right-0 px-4 pt-3 pb-[calc(4rem+env(safe-area-inset-bottom))] bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
         <div className="flex gap-3">
           <Button
             onClick={handleNext}
