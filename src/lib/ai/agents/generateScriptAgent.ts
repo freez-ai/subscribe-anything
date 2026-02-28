@@ -242,7 +242,7 @@ export async function generateScriptAgent(
             });
           } else {
             // Layer 1 passed: ≥1 items collected — run layers 2 & 3 (LLM quality + data check)
-            onProgress?.(`沙箱验证通过（${result.itemCount} 条），正在进行 LLM 质量审查...`);
+            onProgress?.(`沙箱验证通过（${result.itemCount} 条），正在进行质量审查...`);
             const llmCheck = await validateScriptAgent(
               source,
               scriptArg,
@@ -255,7 +255,7 @@ export async function generateScriptAgent(
             if (llmCheck.valid) {
               lastScript = scriptArg;
               lastValidItems = result.items;
-              onProgress?.(`LLM 审查通过，采集到 ${result.itemCount ?? 0} 条内容`);
+              onProgress?.(`审查通过，采集到 ${result.itemCount ?? 0} 条内容`);
               resultContent = JSON.stringify({
                 success: true,
                 itemCount: result.itemCount ?? 0,
@@ -263,12 +263,12 @@ export async function generateScriptAgent(
               });
             } else {
               // Layers 2/3 failed
-              onProgress?.(`LLM 审查失败: ${llmCheck.reason.slice(0, 80)}`);
+              onProgress?.(`审查失败: ${llmCheck.reason.slice(0, 80)}`);
               const feedback: Record<string, unknown> = {
                 success: false,
                 itemCount: result.itemCount ?? 0,
                 sandboxPassed: true,
-                error: `LLM 质量审查失败：${llmCheck.reason}`,
+                error: `质量审查失败：${llmCheck.reason}`,
               };
               if (llmCheck.fixedScript) {
                 feedback.suggestedScript = llmCheck.fixedScript;
@@ -351,7 +351,7 @@ export async function generateScriptAgent(
       }
 
       if (result.success && (result.itemCount ?? 0) > 0) {
-        onProgress?.(`沙箱验证通过（${result.itemCount} 条），正在进行 LLM 质量审查...`);
+        onProgress?.(`沙箱验证通过（${result.itemCount} 条），正在进行质量审查...`);
         const llmCheck = await validateScriptAgent(
           source,
           finalScript,
@@ -371,7 +371,7 @@ export async function generateScriptAgent(
         return {
           success: false,
           script: llmCheck.fixedScript ?? finalScript,
-          error: `LLM 质量审查失败：${llmCheck.reason}`,
+          error: `质量审查失败：${llmCheck.reason}`,
         };
       }
 

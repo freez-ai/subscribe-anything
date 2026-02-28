@@ -8,7 +8,11 @@ import { Trash2 } from 'lucide-react';
 import type { Subscription } from '@/types/db';
 
 interface SubscriptionCardProps {
-  subscription: Subscription & { latestLog?: string | null };
+  subscription: Subscription & {
+    latestLog?: string | null;
+    latestLogStep?: string | null;
+    wizardStep?: number | null;
+  };
   onToggle: (id: string, isEnabled: boolean) => void;
   onDelete: (id: string) => void;
   onDiscard?: (id: string) => void;
@@ -33,7 +37,28 @@ export default function SubscriptionCard({
   onDiscard,
 }: SubscriptionCardProps) {
   const router = useRouter();
-  const { managedStatus, latestLog } = subscription;
+  const { managedStatus, latestLog, latestLogStep, wizardStep } = subscription;
+
+  // Map wizard step number to build-log step name
+  const wizardStepToLogStep: Record<number, string> = {
+    2: 'find_sources',
+    3: 'generate_script',
+    4: 'complete',
+  };
+
+  // Step label mapping
+  const stepLabels: Record<number, string> = {
+    1: '填写主题',
+    2: '发现源',
+    3: '生成脚本',
+    4: '确认',
+  };
+
+  // Only show latestLog if the log step matches the current wizard step
+  const currentStep = wizardStep ?? null;
+  const expectedLogStep = currentStep ? wizardStepToLogStep[currentStep] : null;
+  const shouldShowLog = latestLog && latestLogStep && expectedLogStep && latestLogStep === expectedLogStep;
+  const stepLabel = currentStep ? stepLabels[currentStep] : null;
 
   // Cards in creating state have special click behavior
   const handleCardClick = () => {
@@ -89,18 +114,33 @@ export default function SubscriptionCard({
             </p>
           )}
           {managedStatus === 'manual_creating' && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {latestLog ?? '点击继续创建'}
+            <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5">
+              {stepLabel && (
+                <span className="inline-flex items-center rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 text-[10px] font-medium shrink-0">
+                  {stepLabel}
+                </span>
+              )}
+              <span className="truncate">{shouldShowLog ? latestLog : '点击继续创建'}</span>
             </p>
           )}
           {managedStatus === 'managed_creating' && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {latestLog ?? '点击查看进度'}
+            <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5">
+              {stepLabel && (
+                <span className="inline-flex items-center rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[10px] font-medium shrink-0">
+                  {stepLabel}
+                </span>
+              )}
+              <span className="truncate">{shouldShowLog ? latestLog : '点击查看进度'}</span>
             </p>
           )}
           {managedStatus === 'failed' && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-              {subscription.managedError ?? '创建失败，点击查看详情或使用删除按钮丢弃'}
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 flex items-start gap-1.5">
+              {stepLabel && (
+                <span className="inline-flex items-center rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-px">
+                  {stepLabel}
+                </span>
+              )}
+              <span>{subscription.managedError ?? '创建失败，点击查看详情或使用删除按钮丢弃'}</span>
             </p>
           )}
         </div>

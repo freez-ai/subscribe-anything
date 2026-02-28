@@ -22,20 +22,33 @@ export async function GET() {
       .filter((s) => s.managedStatus === 'manual_creating' || s.managedStatus === 'managed_creating')
       .map((s) => s.id);
 
-    const latestLogs: Record<string, string> = {};
+    const latestLogs: Record<string, { message: string; step: string }> = {};
     for (const subId of creatingIds) {
       const latest = db
-        .select({ message: managedBuildLogs.message })
+        .select({ message: managedBuildLogs.message, step: managedBuildLogs.step })
         .from(managedBuildLogs)
         .where(eq(managedBuildLogs.subscriptionId, subId))
         .orderBy(desc(managedBuildLogs.createdAt))
         .limit(1)
         .get();
-      if (latest) latestLogs[subId] = latest.message;
+      if (latest) latestLogs[subId] = latest;
     }
 
     return Response.json(
-      rows.map((r) => ({ ...r, latestLog: latestLogs[r.id] ?? null }))
+      rows.map((r) => {
+        let wizardStep: number | null = null;
+        if (r.wizardStateJson) {
+          try {
+            wizardStep = JSON.parse(r.wizardStateJson).step ?? null;
+          } catch { /* ignore */ }
+        }
+        return {
+          ...r,
+          latestLog: latestLogs[r.id]?.message ?? null,
+          latestLogStep: latestLogs[r.id]?.step ?? null,
+          wizardStep,
+        };
+      })
     );
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {

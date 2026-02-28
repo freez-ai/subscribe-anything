@@ -6,6 +6,7 @@ import {
   Bot,
   BrainCircuit,
   CheckCircle2,
+  Eye,
   Loader2,
   Play,
   RotateCcw,
@@ -17,6 +18,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import LLMLogDialog from '@/components/debug/LLMLogDialog';
+import { ItemPreviewDialog } from '@/components/wizard/ItemPreviewDialog';
 import type { LLMCallInfo } from '@/lib/ai/client';
 import type { CollectedItem } from '@/lib/sandbox/contract';
 import type { GeneratedSource, WizardState } from '@/types/wizard';
@@ -79,6 +81,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
   const [llmCalls, setLLMCalls] = useState<LLMCallInfo[]>([]);
   // Track which source's LLM log dialog is open (globalIdx), null = none
   const [llmLogOpenFor, setLLMLogOpenFor] = useState<number | null>(null);
+  const [previewSourceIdx, setPreviewSourceIdx] = useState<number | null>(null);
   // Track sources manually aborted — SSE success/error events for these will be ignored
   const abortedIndicesRef = useRef(new Set<number>());
   const abortRef = useRef<AbortController | null>(null);
@@ -381,9 +384,18 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                             脚本验证通过
                           </span>
                           {s.items.length > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              采集到 {s.items.length} 条内容
-                            </span>
+                            <>
+                              <span className="text-xs text-muted-foreground">
+                                采集到 {s.items.length} 条内容
+                              </span>
+                              <button
+                                onClick={() => setPreviewSourceIdx(globalIdx)}
+                                className="inline-flex items-center gap-1 text-xs text-primary hover:underline underline-offset-2"
+                              >
+                                <Eye className="h-3 w-3" />
+                                预览
+                              </button>
+                            </>
                           )}
                         </div>
                       )}
@@ -398,6 +410,22 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
 
                       {/* Per-source action buttons */}
                       <div className="mt-2 flex flex-wrap items-start gap-2">
+                        {/* Per-source LLM log button */}
+                        {(s.status === 'failed' || s.status === 'success' || sourceLLMCalls.length > 0) && (
+                          <button
+                            onClick={() =>
+                              setLLMLogOpenFor((prev) =>
+                                prev === globalIdx ? null : globalIdx
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-xs h-7 px-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            title="查看该数据源的 LLM 调用日志"
+                          >
+                            <BrainCircuit className="h-3 w-3" />
+                            LLM调用日志
+                          </button>
+                        )}
+
                         {/* Start generation button (skipped sources) */}
                         {s.status === 'skipped' && (
                           <Button
@@ -420,22 +448,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                           >
                             <Square className="h-3 w-3 mr-1" />中断
                           </Button>
-                        )}
-
-                        {/* Per-source LLM log button */}
-                        {(s.status === 'failed' || s.status === 'success' || sourceLLMCalls.length > 0) && (
-                          <button
-                            onClick={() =>
-                              setLLMLogOpenFor((prev) =>
-                                prev === globalIdx ? null : globalIdx
-                              )
-                            }
-                            className="inline-flex items-center gap-1 text-xs h-7 px-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                            title="查看该数据源的 LLM 调用日志"
-                          >
-                            <BrainCircuit className="h-3 w-3" />
-                            LLM调用日志
-                          </button>
                         )}
 
                         {/* Retry button (failed) */}
@@ -539,7 +551,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
           >
             暂存
           </Button>
-          {(hasSuccess || anyInProgress) && onManagedCreate && (
+          {hasSuccess && onManagedCreate && (
             <Button
               variant="outline"
               onClick={() => {
@@ -579,6 +591,20 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
             calls={calls}
             totalTokens={totalTokens}
             onClose={() => setLLMLogOpenFor(null)}
+          />
+        );
+      })()}
+
+      {/* Item preview dialog */}
+      {previewSourceIdx !== null && (() => {
+        const source = allSources[previewSourceIdx];
+        const s = sourceStatuses[previewSourceIdx];
+        if (!source || !s || s.status !== 'success') return null;
+        return (
+          <ItemPreviewDialog
+            title={source.title}
+            items={s.items}
+            onClose={() => setPreviewSourceIdx(null)}
           />
         );
       })()}
