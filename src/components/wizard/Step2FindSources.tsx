@@ -75,7 +75,7 @@ export default function Step2FindSources({
         .then((data: { calls?: LLMCallInfo[] }) => {
           if (data.calls && data.calls.length > 0) {
             setLLMCalls(data.calls);
-            // 同步到 wizard state，确保暂存/重入向导时能从 DB 恢复
+            // 同步到 wizard state，确保暂存退出/重入向导时能从 DB 恢复
             onStateChange({ step2LlmCalls: data.calls });
           }
         })
@@ -463,7 +463,7 @@ export default function Step2FindSources({
             </Button>
           )}
           <Button variant="outline" onClick={onBack} className="flex-none">
-            暂存
+            暂存退出
           </Button>
           {onDiscard && (
             <Button

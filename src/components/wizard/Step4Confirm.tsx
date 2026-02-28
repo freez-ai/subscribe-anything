@@ -332,7 +332,7 @@ export default function Step4Confirm({
             )}
           </Button>
           <Button variant="outline" onClick={onBack} disabled={isSubmitting} className="flex-none">
-            暂存
+            暂存退出
           </Button>
           {onDiscard && (
             <Button

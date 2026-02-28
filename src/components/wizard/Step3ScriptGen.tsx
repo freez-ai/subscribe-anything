@@ -566,7 +566,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
             onClick={onBack}
             className="flex-none"
           >
-            暂存
+            暂存退出
           </Button>
           {onDiscard && (
             <Button
