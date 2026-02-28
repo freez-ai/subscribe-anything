@@ -26,6 +26,7 @@ interface Step4ConfirmProps {
   onNext: () => void;
   onBack: () => void;
   onComplete: (subscriptionId: string) => void;
+  onDiscard?: () => void;
 }
 
 const CUSTOM_VALUE = '__custom__';
@@ -35,6 +36,7 @@ export default function Step4Confirm({
   onStateChange,
   onBack,
   onComplete,
+  onDiscard,
 }: Step4ConfirmProps) {
   const [sources, setSources] = useState<GeneratedSource[]>(state.generatedSources);
   const [customCrons, setCustomCrons] = useState<Record<number, string>>({});
@@ -316,9 +318,6 @@ export default function Step4Confirm({
       {/* Mobile: fixed bottom; Desktop: inline */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} disabled={isSubmitting} className="flex-none">
-            返回
-          </Button>
           <Button
             onClick={handleSubmit}
             disabled={isSubmitting || sources.length === 0}
@@ -333,6 +332,19 @@ export default function Step4Confirm({
               '完成创建'
             )}
           </Button>
+          <Button variant="outline" onClick={onBack} disabled={isSubmitting} className="flex-none">
+            暂存
+          </Button>
+          {onDiscard && (
+            <Button
+              variant="ghost"
+              onClick={onDiscard}
+              disabled={isSubmitting}
+              className="flex-none text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              丢弃
+            </Button>
+          )}
         </div>
       </div>
 

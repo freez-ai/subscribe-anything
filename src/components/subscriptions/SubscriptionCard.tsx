@@ -8,7 +8,7 @@ import { Trash2 } from 'lucide-react';
 import type { Subscription } from '@/types/db';
 
 interface SubscriptionCardProps {
-  subscription: Subscription;
+  subscription: Subscription & { latestLog?: string | null };
   onToggle: (id: string, isEnabled: boolean) => void;
   onDelete: (id: string) => void;
   onDiscard?: (id: string) => void;
@@ -33,7 +33,7 @@ export default function SubscriptionCard({
   onDiscard,
 }: SubscriptionCardProps) {
   const router = useRouter();
-  const { managedStatus } = subscription;
+  const { managedStatus, latestLog } = subscription;
 
   // Cards in creating state have special click behavior
   const handleCardClick = () => {
@@ -91,10 +91,14 @@ export default function SubscriptionCard({
             </p>
           )}
           {managedStatus === 'manual_creating' && (
-            <p className="text-xs text-muted-foreground mt-0.5">点击继续创建</p>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+              {latestLog ?? '点击继续创建'}
+            </p>
           )}
           {managedStatus === 'managed_creating' && (
-            <p className="text-xs text-muted-foreground mt-0.5">点击继续创建</p>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+              {latestLog ?? '点击查看进度'}
+            </p>
           )}
           {managedStatus === 'failed' && (
             <p className="text-xs text-muted-foreground mt-0.5">点击查看错误详情</p>

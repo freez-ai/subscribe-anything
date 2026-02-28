@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Loader2, Search } from 'lucide-react';
+import { ExternalLink, Loader2, Search, BrainCircuit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bot as BotIcon } from 'lucide-react';
+import LLMLogDialog from '@/components/debug/LLMLogDialog';
+import type { LLMCallInfo } from '@/lib/ai/client';
 import type { FoundSource, WizardState } from '@/types/wizard';
 
 interface Step2FindSourcesProps {
@@ -16,6 +18,7 @@ interface Step2FindSourcesProps {
   onBack: () => void;
   onStep2Next?: (selectedSources: FoundSource[]) => void;
   onManagedCreate?: (foundSources: FoundSource[]) => void;
+  onDiscard?: () => void;
 }
 
 interface LogEntry {
@@ -42,6 +45,7 @@ export default function Step2FindSources({
   onBack,
   onStep2Next,
   onManagedCreate,
+  onDiscard,
 }: Step2FindSourcesProps) {
   const [searchQueries, setSearchQueries] = useState<string[]>([]);
   const [sources, setSources] = useState<FoundSource[]>(
@@ -56,8 +60,27 @@ export default function Step2FindSources({
   const [isDone, setIsDone] = useState(state.foundSources.length > 0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSearchProviderError, setIsSearchProviderError] = useState(false);
+  const [llmCalls, setLLMCalls] = useState<LLMCallInfo[]>([]);
+  const [showLLMLog, setShowLLMLog] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const seenQueriesRef = useRef(new Set<string>());
+
+  // Poll for LLM calls while subscriptionId is available
+  useEffect(() => {
+    if (!state.subscriptionId) return;
+    const subId = state.subscriptionId;
+    const poll = () => {
+      fetch(`/api/subscriptions/${subId}/llm-calls`)
+        .then((r) => r.json())
+        .then((data: { calls?: LLMCallInfo[] }) => {
+          if (data.calls) setLLMCalls(data.calls);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => clearInterval(timer);
+  }, [state.subscriptionId]);
 
   const connectSSE = () => {
     const subscriptionId = state.subscriptionId;
@@ -262,6 +285,16 @@ export default function Step2FindSources({
               <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce [animation-delay:300ms]" />
             </div>
           )}
+          {llmCalls.length > 0 && (
+            <button
+              onClick={() => setShowLLMLog(true)}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              title="查看 LLM 调用日志"
+            >
+              <BrainCircuit className="h-3.5 w-3.5" />
+              {llmCalls.length} 次调用
+            </button>
+          )}
         </div>
       )}
 
@@ -380,9 +413,6 @@ export default function Step2FindSources({
       {/* Bottom bar */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} className="flex-none">
-            返回
-          </Button>
           <Button
             onClick={handleNext}
             disabled={!isDone || selectedCount === 0}
@@ -399,6 +429,9 @@ export default function Step2FindSources({
               '下一步'
             )}
           </Button>
+          <Button variant="outline" onClick={onBack} className="flex-none">
+            暂存
+          </Button>
           {onManagedCreate && (
             <Button
               variant="outline"
@@ -414,8 +447,27 @@ export default function Step2FindSources({
               {isStreaming ? '转后台托管' : '后台托管创建'}
             </Button>
           )}
+          {onDiscard && (
+            <Button
+              variant="ghost"
+              onClick={onDiscard}
+              className="flex-none text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              丢弃
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* LLM Log Dialog */}
+      {showLLMLog && (
+        <LLMLogDialog
+          sourceTitle={`发现数据源 — ${state.topic}`}
+          calls={llmCalls}
+          totalTokens={llmCalls.reduce((sum, c) => sum + (c.usage?.total ?? 0), 0)}
+          onClose={() => setShowLLMLog(false)}
+        />
+      )}
     </div>
   );
 }

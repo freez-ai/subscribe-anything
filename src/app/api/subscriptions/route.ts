@@ -1,6 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { subscriptions } from '@/lib/db/schema';
+import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
 import { createSourcesForSubscription } from '@/lib/subscriptionCreator';
 import type { SourceInput } from '@/lib/subscriptionCreator';
@@ -16,7 +16,27 @@ export async function GET() {
       .where(eq(subscriptions.userId, session.userId))
       .orderBy(desc(subscriptions.createdAt))
       .all();
-    return Response.json(rows);
+
+    // For creating subscriptions, attach the latest log message
+    const creatingIds = rows
+      .filter((s) => s.managedStatus === 'manual_creating' || s.managedStatus === 'managed_creating')
+      .map((s) => s.id);
+
+    const latestLogs: Record<string, string> = {};
+    for (const subId of creatingIds) {
+      const latest = db
+        .select({ message: managedBuildLogs.message })
+        .from(managedBuildLogs)
+        .where(eq(managedBuildLogs.subscriptionId, subId))
+        .orderBy(desc(managedBuildLogs.createdAt))
+        .limit(1)
+        .get();
+      if (latest) latestLogs[subId] = latest.message;
+    }
+
+    return Response.json(
+      rows.map((r) => ({ ...r, latestLog: latestLogs[r.id] ?? null }))
+    );
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });

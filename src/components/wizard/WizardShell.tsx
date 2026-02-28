@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import type { WizardState } from '@/types/wizard';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -298,18 +296,51 @@ export default function WizardShell() {
       {/* Progress Bar */}
       <div className="px-4 pt-4 pb-2 md:px-6 md:pt-6">
         {isMobile ? (
-          // Mobile: compact dots + discard button
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {STEP_LABELS.map((_, idx) => {
-                const stepNum = idx + 1;
-                const isActive = state.step === stepNum;
-                const isCompleted = state.step > stepNum;
-                return (
-                  <div key={stepNum} className="flex items-center">
+          // Mobile: compact dots
+          <div className="flex items-center gap-2">
+            {STEP_LABELS.map((_, idx) => {
+              const stepNum = idx + 1;
+              const isActive = state.step === stepNum;
+              const isCompleted = state.step > stepNum;
+              return (
+                <div key={stepNum} className="flex items-center">
+                  <div
+                    className={[
+                      'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
+                      isActive
+                        ? 'bg-primary text-primary-foreground'
+                        : isCompleted
+                          ? 'bg-primary/30 text-primary'
+                          : 'bg-muted text-muted-foreground',
+                    ].join(' ')}
+                  >
+                    {stepNum}
+                  </div>
+                  {idx < STEP_LABELS.length - 1 && (
                     <div
                       className={[
-                        'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
+                        'w-6 h-0.5 mx-0.5 transition-colors',
+                        isCompleted ? 'bg-primary/50' : 'bg-muted',
+                      ].join(' ')}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          // Desktop: steps with labels
+          <div className="flex items-center">
+            {STEP_LABELS.map((label, idx) => {
+              const stepNum = idx + 1;
+              const isActive = state.step === stepNum;
+              const isCompleted = state.step > stepNum;
+              return (
+                <div key={stepNum} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex flex-col items-center gap-1">
+                    <div
+                      className={[
+                        'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors',
                         isActive
                           ? 'bg-primary text-primary-foreground'
                           : isCompleted
@@ -317,107 +348,44 @@ export default function WizardShell() {
                             : 'bg-muted text-muted-foreground',
                       ].join(' ')}
                     >
-                      {stepNum}
+                      {isCompleted ? (
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2.5}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      ) : (
+                        stepNum
+                      )}
                     </div>
-                    {idx < STEP_LABELS.length - 1 && (
-                      <div
-                        className={[
-                          'w-6 h-0.5 mx-0.5 transition-colors',
-                          isCompleted ? 'bg-primary/50' : 'bg-muted',
-                        ].join(' ')}
-                      />
-                    )}
+                    <span
+                      className={[
+                        'text-xs font-medium whitespace-nowrap',
+                        isActive ? 'text-primary' : 'text-muted-foreground',
+                      ].join(' ')}
+                    >
+                      {label}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-            {state.step > 1 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
-                onClick={handleDiscard}
-                disabled={discarding}
-                aria-label="丢弃并返回"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        ) : (
-          // Desktop: steps with labels + discard button
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center flex-1">
-              {STEP_LABELS.map((label, idx) => {
-                const stepNum = idx + 1;
-                const isActive = state.step === stepNum;
-                const isCompleted = state.step > stepNum;
-                return (
-                  <div key={stepNum} className="flex items-center flex-1 last:flex-none">
-                    <div className="flex flex-col items-center gap-1">
-                      <div
-                        className={[
-                          'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors',
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : isCompleted
-                              ? 'bg-primary/30 text-primary'
-                              : 'bg-muted text-muted-foreground',
-                        ].join(' ')}
-                      >
-                        {isCompleted ? (
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2.5}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        ) : (
-                          stepNum
-                        )}
-                      </div>
-                      <span
-                        className={[
-                          'text-xs font-medium whitespace-nowrap',
-                          isActive ? 'text-primary' : 'text-muted-foreground',
-                        ].join(' ')}
-                      >
-                        {label}
-                      </span>
-                    </div>
-                    {idx < STEP_LABELS.length - 1 && (
-                      <div
-                        className={[
-                          'flex-1 h-0.5 mx-2 mb-4 transition-colors',
-                          isCompleted ? 'bg-primary/50' : 'bg-muted',
-                        ].join(' ')}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {state.step > 1 && (
-              <div className="mb-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-destructive flex-shrink-0"
-                  onClick={handleDiscard}
-                  disabled={discarding}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  丢弃
-                </Button>
-              </div>
-            )}
+                  {idx < STEP_LABELS.length - 1 && (
+                    <div
+                      className={[
+                        'flex-1 h-0.5 mx-2 mb-4 transition-colors',
+                        isCompleted ? 'bg-primary/50' : 'bg-muted',
+                      ].join(' ')}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -452,6 +420,7 @@ export default function WizardShell() {
                 foundSources: foundSources.length > 0 ? foundSources : undefined,
               })
             }
+            onDiscard={handleDiscard}
           />
         )}
         {state.step === 3 && (
@@ -460,10 +429,11 @@ export default function WizardShell() {
             onManagedCreate={(generatedSources) =>
               handleManagedCreate({ startStep: 'complete', generatedSources })
             }
+            onDiscard={handleDiscard}
           />
         )}
         {state.step === 4 && (
-          <Step4Confirm {...stepProps} onComplete={handleComplete} />
+          <Step4Confirm {...stepProps} onComplete={handleComplete} onDiscard={handleDiscard} />
         )}
       </div>
     </div>

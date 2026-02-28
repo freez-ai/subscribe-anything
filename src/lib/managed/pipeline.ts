@@ -13,6 +13,7 @@ import { getDb } from '@/lib/db';
 import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { createSourcesForSubscription } from '@/lib/subscriptionCreator';
 import { createId } from '@paralleldrive/cuid2';
+import { upsertLLMCall } from './llmCallStore';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 
 export type ManagedStartStep = 'find_sources' | 'generate_scripts' | 'complete';
@@ -98,7 +99,7 @@ export async function runFindSourcesStep(
           writeLog(subscriptionId, 'find_sources', 'progress', `搜索：${args.query}`);
         }
       },
-      undefined,
+      (info) => upsertLLMCall(subscriptionId, info),
       userId
     );
 
@@ -148,7 +149,7 @@ export async function runGenerateScriptsStep(
         (msg: string) => {
           writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
         },
-        undefined,
+        (info) => upsertLLMCall(subscriptionId, info),
         userId
       );
 
@@ -216,7 +217,7 @@ export async function retryGenerateSourceStep(
       (msg: string) => {
         writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
       },
-      undefined,
+      (info) => upsertLLMCall(subscriptionId, info),
       userId
     );
 

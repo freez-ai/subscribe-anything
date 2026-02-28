@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bot,
+  BrainCircuit,
   CheckCircle2,
   Loader2,
   RotateCcw,
@@ -13,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
+import LLMLogDialog from '@/components/debug/LLMLogDialog';
+import type { LLMCallInfo } from '@/lib/ai/client';
 import type { CollectedItem } from '@/lib/sandbox/contract';
 import type { GeneratedSource, WizardState } from '@/types/wizard';
 
@@ -22,6 +25,7 @@ interface Step3ScriptGenProps {
   onNext: () => void;
   onBack: () => void;
   onManagedCreate?: (generatedSources: GeneratedSource[]) => void;
+  onDiscard?: () => void;
 }
 
 type SourceStatus =
@@ -48,7 +52,7 @@ interface LogEntry {
   payload: { sourceUrl?: string; script?: string; cronExpression?: string; initialItems?: CollectedItem[]; unverified?: boolean } | null;
 }
 
-export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, onManagedCreate }: Step3ScriptGenProps) {
+export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, onManagedCreate, onDiscard }: Step3ScriptGenProps) {
   const allSources = state.foundSources;
   const selectedSet = new Set(state.selectedIndices);
 
@@ -70,8 +74,27 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
 
   const [userPromptInputs, setUserPromptInputs] = useState<Record<number, string>>({});
   const [retryExpanded, setRetryExpanded] = useState<Set<number>>(new Set());
+  const [llmCalls, setLLMCalls] = useState<LLMCallInfo[]>([]);
+  const [showLLMLog, setShowLLMLog] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const resetSourcesRef = useRef(new Set<string>());
+
+  // Poll for LLM calls while subscriptionId is available
+  useEffect(() => {
+    if (!state.subscriptionId) return;
+    const subId = state.subscriptionId;
+    const poll = () => {
+      fetch(`/api/subscriptions/${subId}/llm-calls`)
+        .then((r) => r.json())
+        .then((data: { calls?: LLMCallInfo[] }) => {
+          if (data.calls) setLLMCalls(data.calls);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => clearInterval(timer);
+  }, [state.subscriptionId]);
 
   const updateStatus = useCallback((globalIdx: number, update: SourceStatus) => {
     setSourceStatuses((prev) => {
@@ -258,6 +281,20 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         </p>
       </div>
 
+      {/* LLM call log button */}
+      {llmCalls.length > 0 && (
+        <div className="flex">
+          <button
+            onClick={() => setShowLLMLog(true)}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            title="查看 LLM 调用日志"
+          >
+            <BrainCircuit className="h-3.5 w-3.5" />
+            LLM 调用日志（{llmCalls.length} 次）
+          </button>
+        </div>
+      )}
+
       <ScrollArea className="h-[52vh] md:h-[48vh]">
         <div className="flex flex-col gap-3 pr-2">
           {allSources.map((source, globalIdx) => {
@@ -413,14 +450,6 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background border-t md:static md:border-t-0 md:bg-transparent md:p-0 md:mt-2">
         <div className="flex gap-3">
           <Button
-            variant="outline"
-            onClick={onBack}
-            disabled={anyInProgress}
-            className="flex-none"
-          >
-            返回
-          </Button>
-          <Button
             onClick={handleNext}
             disabled={anyInProgress || !allSelectedTerminated || !hasSuccess}
             className="flex-1 md:flex-none"
@@ -430,6 +459,14 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
               : hasSuccess
                 ? `下一步（${successSources.length} 个源就绪）`
                 : '下一步'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onBack}
+            disabled={anyInProgress}
+            className="flex-none"
+          >
+            暂存
           </Button>
           {(hasSuccess || anyInProgress) && onManagedCreate && (
             <Button
@@ -447,8 +484,27 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
               {anyInProgress ? '转后台托管' : '后台托管创建'}
             </Button>
           )}
+          {onDiscard && (
+            <Button
+              variant="ghost"
+              onClick={onDiscard}
+              className="flex-none text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              丢弃
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* LLM Log Dialog */}
+      {showLLMLog && (
+        <LLMLogDialog
+          sourceTitle={`生成采集脚本 — ${state.foundSources.map((s) => s.title).join('、').slice(0, 60)}`}
+          calls={llmCalls}
+          totalTokens={llmCalls.reduce((sum, c) => sum + (c.usage?.total ?? 0), 0)}
+          onClose={() => setShowLLMLog(false)}
+        />
+      )}
     </div>
   );
 }
