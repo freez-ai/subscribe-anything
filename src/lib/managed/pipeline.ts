@@ -38,6 +38,8 @@ export interface ManagedPayload {
   startStep: ManagedStartStep;
   userId: string;
   foundSources?: FoundSource[];
+  /** All discovered sources (for display); foundSources is the selected subset for generation */
+  allFoundSources?: FoundSource[];
   generatedSources?: GeneratedSource[];
 }
 
@@ -449,10 +451,12 @@ export async function runManagedPipeline(
   subscriptionId: string,
   payload: ManagedPayload
 ): Promise<void> {
-  const { topic, criteria, startStep, userId, foundSources: initialFoundSources, generatedSources: initialGeneratedSources } = payload;
+  const { topic, criteria, startStep, userId, foundSources: initialFoundSources, allFoundSources: initialAllFoundSources, generatedSources: initialGeneratedSources } = payload;
 
   try {
     let foundSources: FoundSource[] = initialFoundSources ?? [];
+    // allFoundSources: full discovered list for display (superset of foundSources)
+    let allFoundSources: FoundSource[] = initialAllFoundSources ?? initialFoundSources ?? [];
     let generatedSources: GeneratedSource[] = initialGeneratedSources ?? [];
 
     // ── Phase 1: find_sources ─────────────────────────────────────────────────
@@ -491,10 +495,14 @@ export async function runManagedPipeline(
           } catch { /* ignore, will fall through to fresh run */ }
         }
         // Persist Phase 1 result into wizardStateJson
+        // For Phase 1 with existing results, allFoundSources stays as-is (from initial payload or empty)
+        const selectedUrls1 = new Set(foundSources.map((s) => s.url));
         updateWizardState(subscriptionId, {
           step: 3,
-          foundSources,
-          selectedIndices: foundSources.map((_: unknown, i: number) => i),
+          foundSources: allFoundSources.length > 0 ? allFoundSources : foundSources,
+          selectedIndices: (allFoundSources.length > 0 ? allFoundSources : foundSources)
+            .map((s: FoundSource, i: number) => selectedUrls1.has(s.url) ? i : -1)
+            .filter((i: number) => i >= 0),
           generatedSources: [],
         });
       } else {
@@ -519,6 +527,7 @@ export async function runManagedPipeline(
             markFailed(subscriptionId, '发现数据源失败或超时');
             return;
           }
+          allFoundSources = discovered;
           // If frontend passed specific sources, use them; otherwise auto-select (max 5)
           if (initialFoundSources && initialFoundSources.length > 0) {
             foundSources = initialFoundSources;
@@ -529,10 +538,13 @@ export async function runManagedPipeline(
             writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
           }
           // Persist Phase 1 result into wizardStateJson
+          const selectedUrls2 = new Set(foundSources.map((s) => s.url));
           updateWizardState(subscriptionId, {
             step: 3,
-            foundSources,
-            selectedIndices: foundSources.map((_: unknown, i: number) => i),
+            foundSources: allFoundSources,
+            selectedIndices: allFoundSources
+              .map((s: FoundSource, i: number) => selectedUrls2.has(s.url) ? i : -1)
+              .filter((i: number) => i >= 0),
             generatedSources: [],
           });
         } else {
@@ -558,15 +570,19 @@ export async function runManagedPipeline(
 
             const selected = autoSelectSources(discovered);
             foundSources = selected;
+            allFoundSources = discovered;
 
             // Always write sources log — even if cancelled (watch mode needs to see results)
             writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
             writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`, selected);
             // Persist Phase 1 result into wizardStateJson
+            const selectedUrls3 = new Set(selected.map((s) => s.url));
             updateWizardState(subscriptionId, {
               step: 3,
-              foundSources: selected,
-              selectedIndices: selected.map((_: unknown, i: number) => i),
+              foundSources: discovered,
+              selectedIndices: discovered
+                .map((s: FoundSource, i: number) => selectedUrls3.has(s.url) ? i : -1)
+                .filter((i: number) => i >= 0),
               generatedSources: [],
             });
           } catch (err) {

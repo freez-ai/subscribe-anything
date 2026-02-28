@@ -37,18 +37,18 @@ export async function POST(
 
     let foundSources: FoundSource[] = [];
     let generatedSources = [];
+    let selectedIndices: number[] = [];
     let resumeStep: 2 | 3 = 2;
 
     if (wizardState && wizardState.step) {
       foundSources = wizardState.foundSources ?? [];
       generatedSources = wizardState.generatedSources ?? [];
+      selectedIndices = wizardState.selectedIndices ?? foundSources.map((_: unknown, i: number) => i);
       // If pipeline reached step 3+ (sources found), resume at step 3
       resumeStep = wizardState.step >= 3 ? 3 : 2;
     }
     // If wizardState is null or has no step, pipeline just started —
     // return step 2 with empty data; Step2 will connect to SSE and wait.
-
-    const selectedIndices = foundSources.map((_: unknown, i: number) => i);
 
     // Build wizard state to persist
     const newWizardState = {
@@ -77,6 +77,7 @@ export async function POST(
       topic: sub.topic,
       criteria: sub.criteria ?? '',
       foundSources,
+      selectedIndices,
       generatedSources,
       resumeStep,
     });

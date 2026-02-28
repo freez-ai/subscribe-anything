@@ -18,6 +18,7 @@ export async function POST(req: Request) {
       criteria,
       startStep = 'find_sources',
       foundSources,
+      allFoundSources,
       generatedSources,
       existingSubscriptionId,
     } = body as {
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
       criteria?: string;
       startStep?: ManagedStartStep;
       foundSources?: FoundSource[];
+      allFoundSources?: FoundSource[];
       generatedSources?: GeneratedSource[];
       existingSubscriptionId?: string; // reuse a manual_creating subscription
     };
@@ -39,12 +41,17 @@ export async function POST(req: Request) {
 
     // Build initial wizardStateJson so takeover works even before pipeline writes state
     const initialStep = startStep === 'find_sources' ? 2 : startStep === 'generate_scripts' ? 3 : 4;
+    // allFoundSources = full discovered list for display; foundSources = selected subset for generation
+    const displaySources = allFoundSources ?? foundSources ?? [];
+    const selectedUrls = new Set((foundSources ?? []).map((s) => s.url));
     const initialWizardState = JSON.stringify({
       step: initialStep,
       topic: topic.trim(),
       criteria: criteria?.trim() ?? '',
-      foundSources: foundSources ?? [],
-      selectedIndices: (foundSources ?? []).map((_: unknown, i: number) => i),
+      foundSources: displaySources,
+      selectedIndices: displaySources
+        .map((s: FoundSource, i: number) => selectedUrls.has(s.url) ? i : -1)
+        .filter((i: number) => i >= 0),
       generatedSources: generatedSources ?? [],
     });
 
@@ -103,6 +110,7 @@ export async function POST(req: Request) {
       startStep,
       userId: session.userId,
       foundSources,
+      allFoundSources,
       generatedSources,
     }).catch((err) => console.error('[managed POST] Pipeline error:', err));
 

@@ -92,25 +92,29 @@ export default function WizardShell() {
       }
 
       const foundSources: FoundSource[] = takeover.foundSources ?? [];
+      const selectedIndices: number[] = takeover.selectedIndices ?? foundSources.map((_: FoundSource, i: number) => i);
       const resumeStep: 2 | 3 = takeover.resumeStep ?? 2;
+
+      // Only restart generate_scripts for selected sources
+      const selectedSources = selectedIndices.map((i: number) => foundSources[i]).filter(Boolean);
 
       const newState: WizardState = {
         step: resumeStep,
         topic: takeover.topic ?? '',
         criteria: takeover.criteria ?? '',
         foundSources,
-        selectedIndices: foundSources.map((_, i) => i),
+        selectedIndices,
         generatedSources: takeover.generatedSources ?? [],
         subscriptionId,
       };
       setState(newState);
 
       if (resumeStep === 3) {
-        // Restart generate_scripts for any sources that haven't been processed yet
+        // Restart generate_scripts for selected sources that haven't been processed yet
         await fetch(`/api/subscriptions/${subscriptionId}/run-step`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'generate_scripts', sources: foundSources }),
+          body: JSON.stringify({ step: 'generate_scripts', sources: selectedSources }),
         });
       }
       // resumeStep === 2: find_sources still running or not started yet.
@@ -255,6 +259,7 @@ export default function WizardShell() {
   // Managed create: start full background pipeline and go to list
   const handleManagedCreate = async (data: {
     foundSources?: FoundSource[];
+    allFoundSources?: FoundSource[];
     generatedSources?: GeneratedSource[];
     startStep: 'find_sources' | 'generate_scripts' | 'complete';
   }) => {
@@ -267,6 +272,7 @@ export default function WizardShell() {
           criteria: state.criteria,
           startStep: data.startStep,
           foundSources: data.foundSources,
+          allFoundSources: data.allFoundSources,
           generatedSources: data.generatedSources,
           existingSubscriptionId: state.subscriptionId,
         }),
@@ -418,10 +424,11 @@ export default function WizardShell() {
           <Step2FindSources
             {...stepProps}
             onStep2Next={handleStep2Next}
-            onManagedCreate={(foundSources) =>
+            onManagedCreate={(selectedSources) =>
               handleManagedCreate({
-                startStep: foundSources.length > 0 ? 'generate_scripts' : 'find_sources',
-                foundSources: foundSources.length > 0 ? foundSources : undefined,
+                startStep: selectedSources.length > 0 ? 'generate_scripts' : 'find_sources',
+                foundSources: selectedSources.length > 0 ? selectedSources : undefined,
+                allFoundSources: state.foundSources.length > 0 ? state.foundSources : undefined,
               })
             }
             onDiscard={handleDiscard}
@@ -446,6 +453,7 @@ export default function WizardShell() {
                 handleManagedCreate({
                   startStep: 'generate_scripts',
                   foundSources: selectedSources,
+                  allFoundSources: state.foundSources,
                   generatedSources: generatedSources.length > 0 ? generatedSources : undefined,
                 });
               }
