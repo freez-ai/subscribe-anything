@@ -6,8 +6,12 @@ import {
   Bot,
   BrainCircuit,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Loader2,
+  Play,
   RotateCcw,
+  Square,
   XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -75,7 +79,10 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
   const [userPromptInputs, setUserPromptInputs] = useState<Record<number, string>>({});
   const [retryExpanded, setRetryExpanded] = useState<Set<number>>(new Set());
   const [llmCalls, setLLMCalls] = useState<LLMCallInfo[]>([]);
-  const [showLLMLog, setShowLLMLog] = useState(false);
+  // Track which source's LLM log dialog is open (globalIdx), null = none
+  const [llmLogOpenFor, setLLMLogOpenFor] = useState<number | null>(null);
+  // Track sources manually aborted — SSE success/error events for these will be ignored
+  const abortedIndicesRef = useRef(new Set<number>());
   const abortRef = useRef<AbortController | null>(null);
   const resetSourcesRef = useRef(new Set<string>());
 
@@ -142,13 +149,13 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
               const sourceUrl = logEvent.payload?.sourceUrl;
               if (!sourceUrl) continue;
 
-              // Ignore events for sources that were reset for retry
-              // (we only ignore events with IDs that were seen BEFORE the reset)
               const globalIdx = allSources.findIndex((s) => s.url === sourceUrl);
               if (globalIdx < 0) continue;
 
+              // Ignore events for sources that were manually aborted
+              if (abortedIndicesRef.current.has(globalIdx)) continue;
+
               if (logEvent.level === 'info' || logEvent.level === 'progress') {
-                // Only show generating state if source is currently pending/generating
                 setSourceStatuses((prev) => {
                   const current = prev[globalIdx];
                   if (current?.status === 'pending' || current?.status === 'generating') {
@@ -237,7 +244,8 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
     const source = allSources[globalIdx];
     if (!source || !state.subscriptionId) return;
 
-    // Reset source status locally
+    // Remove from aborted set so SSE events are no longer blocked
+    abortedIndicesRef.current.delete(globalIdx);
     updateStatus(globalIdx, { status: 'pending' });
     setRetryExpanded((prev) => {
       const next = new Set(prev);
@@ -256,8 +264,41 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         userPrompt: userPromptInputs[globalIdx]?.trim() || undefined,
       }),
     }).catch(() => {});
+  };
 
-    // Reset onStepComplete flag to allow it to fire again after retry
+  // Start generation for a skipped source (no user prompt required)
+  const handleStartGeneration = async (globalIdx: number) => {
+    const source = allSources[globalIdx];
+    if (!source || !state.subscriptionId) return;
+
+    abortedIndicesRef.current.delete(globalIdx);
+    updateStatus(globalIdx, { status: 'pending' });
+
+    await fetch(`/api/subscriptions/${state.subscriptionId}/retry-source`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sourceUrl: source.url,
+        sourceTitle: source.title,
+        sourceDescription: source.description,
+      }),
+    }).catch(() => {});
+  };
+
+  // Abort a currently in-progress source
+  const handleAbortSource = async (globalIdx: number) => {
+    const source = allSources[globalIdx];
+    if (!source || !state.subscriptionId) return;
+
+    // Mark locally as aborted immediately
+    abortedIndicesRef.current.add(globalIdx);
+    updateStatus(globalIdx, { status: 'failed', error: '已手动中断' });
+
+    await fetch(`/api/subscriptions/${state.subscriptionId}/abort-source`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceUrl: source.url }),
+    }).catch(() => {});
   };
 
   const retryAllFailed = () => {
@@ -271,29 +312,19 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
     onNext();
   };
 
+  // ── Per-source LLM calls ──────────────────────────────────────────────────
+  const getSourceLLMCalls = (sourceUrl: string) =>
+    llmCalls.filter((c) => c.sourceUrl === sourceUrl);
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4 pt-4">
       <div>
         <h2 className="text-xl font-semibold mb-1">生成采集脚本</h2>
         <p className="text-sm text-muted-foreground">
-          AI 正在为已选数据源生成并验证采集脚本，未选中的数据源可手动开始
+          AI 正在为已选数据源并行生成并验证采集脚本，未选中的数据源可手动开始
         </p>
       </div>
-
-      {/* LLM call log button */}
-      {llmCalls.length > 0 && (
-        <div className="flex">
-          <button
-            onClick={() => setShowLLMLog(true)}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            title="查看 LLM 调用日志"
-          >
-            <BrainCircuit className="h-3.5 w-3.5" />
-            LLM 调用日志（{llmCalls.length} 次）
-          </button>
-        </div>
-      )}
 
       <ScrollArea className="h-[52vh] md:h-[48vh]">
         <div className="flex flex-col gap-3 pr-2">
@@ -301,6 +332,8 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
             const s = sourceStatuses[globalIdx] ?? { status: 'skipped' as const };
             const inProgress = isInProgress(s);
             const expanded = retryExpanded.has(globalIdx);
+            const sourceLLMCalls = getSourceLLMCalls(source.url);
+            const sourceTotalTokens = sourceLLMCalls.reduce((sum, c) => sum + (c.usage?.total ?? 0), 0);
 
             return (
               <Card
@@ -337,7 +370,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                         <p className="text-xs text-muted-foreground">未选中，跳过生成</p>
                       )}
                       {s.status === 'pending' && (
-                        <p className="text-xs text-muted-foreground">等待中...</p>
+                        <p className="text-xs text-muted-foreground">正在初始化...</p>
                       )}
                       {s.status === 'generating' && (
                         <p className="text-xs text-muted-foreground">
@@ -367,6 +400,30 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
 
                       {/* Per-source action buttons */}
                       <div className="mt-2 flex flex-wrap items-start gap-2">
+                        {/* Start generation button (skipped sources) */}
+                        {s.status === 'skipped' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => handleStartGeneration(globalIdx)}
+                          >
+                            <Play className="h-3 w-3 mr-1" />开始生成
+                          </Button>
+                        )}
+
+                        {/* Abort button (in-progress sources) */}
+                        {inProgress && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => handleAbortSource(globalIdx)}
+                          >
+                            <Square className="h-3 w-3 mr-1" />中断
+                          </Button>
+                        )}
+
                         {/* Retry button (failed) */}
                         {s.status === 'failed' && !expanded && (
                           <Button
@@ -420,6 +477,32 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                               </Button>
                             </div>
                           </div>
+                        )}
+
+                        {/* Per-source LLM log button */}
+                        {sourceLLMCalls.length > 0 && (
+                          <button
+                            onClick={() =>
+                              setLLMLogOpenFor((prev) =>
+                                prev === globalIdx ? null : globalIdx
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                            title="查看该数据源的 LLM 调用日志"
+                          >
+                            <BrainCircuit className="h-3 w-3" />
+                            {sourceLLMCalls.length} 次调用
+                            {sourceTotalTokens > 0 && (
+                              <span className="text-muted-foreground/60">
+                                · {sourceTotalTokens.toLocaleString()} tokens
+                              </span>
+                            )}
+                            {llmLogOpenFor === globalIdx ? (
+                              <ChevronUp className="h-3 w-3" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3" />
+                            )}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -495,15 +578,21 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         </div>
       </div>
 
-      {/* LLM Log Dialog */}
-      {showLLMLog && (
-        <LLMLogDialog
-          sourceTitle={`生成采集脚本 — ${state.foundSources.map((s) => s.title).join('、').slice(0, 60)}`}
-          calls={llmCalls}
-          totalTokens={llmCalls.reduce((sum, c) => sum + (c.usage?.total ?? 0), 0)}
-          onClose={() => setShowLLMLog(false)}
-        />
-      )}
+      {/* Per-source LLM Log Dialog */}
+      {llmLogOpenFor !== null && (() => {
+        const source = allSources[llmLogOpenFor];
+        if (!source) return null;
+        const calls = getSourceLLMCalls(source.url);
+        const totalTokens = calls.reduce((sum, c) => sum + (c.usage?.total ?? 0), 0);
+        return (
+          <LLMLogDialog
+            sourceTitle={source.title}
+            calls={calls}
+            totalTokens={totalTokens}
+            onClose={() => setLLMLogOpenFor(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -13,8 +13,22 @@ import { getDb } from '@/lib/db';
 import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { createSourcesForSubscription } from '@/lib/subscriptionCreator';
 import { createId } from '@paralleldrive/cuid2';
+import pLimit from 'p-limit';
 import { upsertLLMCall } from './llmCallStore';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
+
+// In-memory set of "subscriptionId:sourceUrl" keys that have been manually aborted.
+export const abortedSourceKeys = new Set<string>();
+
+/**
+ * Abort a specific source generation: add to abortedSourceKeys and write an error log.
+ * The background task may still be running its current LLM call, but will be ignored on next
+ * checkpoint; the error log causes the frontend SSE to show the source as failed immediately.
+ */
+export function abortSource(subscriptionId: string, sourceUrl: string): void {
+  abortedSourceKeys.add(`${subscriptionId}:${sourceUrl}`);
+  writeLog(subscriptionId, 'generate_script', 'error', '已手动中断', { sourceUrl });
+}
 
 export type ManagedStartStep = 'find_sources' | 'generate_scripts' | 'complete';
 
@@ -113,7 +127,8 @@ export async function runFindSourcesStep(
 /**
  * Run the generate_scripts step for a subscription.
  * Skips sources that already have a success log.
- * Writes logs to DB; runs to completion unless subscription is deleted.
+ * Runs all sources in parallel (up to 5 concurrent).
+ * Writes logs to DB; runs to completion unless subscription is deleted or source is aborted.
  */
 export async function runGenerateScriptsStep(
   subscriptionId: string,
@@ -132,62 +147,75 @@ export async function runGenerateScriptsStep(
   const completedUrls = getCompletedSourceUrls(subscriptionId);
 
   const { generateScriptAgent } = await import('@/lib/ai/agents/generateScriptAgent');
+  const limit = pLimit(5);
 
-  for (const source of sources) {
-    if (completedUrls.has(source.url)) continue; // already done — skip
+  const tasks = sources
+    .filter((source) => !completedUrls.has(source.url))
+    .map((source) =>
+      limit(async () => {
+        const abortKey = `${subscriptionId}:${source.url}`;
+        if (abortedSourceKeys.has(abortKey)) return;
 
-    writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
+        writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
 
-    try {
-      const result = await generateScriptAgent(
-        {
-          title: source.title,
-          url: source.url,
-          description: source.description,
-          criteria,
-        },
-        (msg: string) => {
-          writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
-        },
-        (info) => upsertLLMCall(subscriptionId, info),
-        userId
-      );
+        try {
+          const result = await generateScriptAgent(
+            {
+              title: source.title,
+              url: source.url,
+              description: source.description,
+              criteria,
+            },
+            (msg: string) => {
+              if (abortedSourceKeys.has(abortKey)) return;
+              writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
+            },
+            (info) => upsertLLMCall(subscriptionId, { ...info, sourceUrl: source.url }),
+            userId
+          );
 
-      if (result.success && result.script) {
-        writeLog(
-          subscriptionId,
-          'generate_script',
-          'success',
-          `"${source.title}" 脚本生成成功，采集到 ${result.initialItems?.length ?? 0} 条数据`,
-          {
-            sourceUrl: source.url,
-            script: result.script,
-            cronExpression: result.cronExpression,
-            initialItems: result.initialItems ?? [],
+          // If aborted while agent was running, don't overwrite the abort error log
+          if (abortedSourceKeys.has(abortKey)) return;
+
+          if (result.success && result.script) {
+            writeLog(
+              subscriptionId,
+              'generate_script',
+              'success',
+              `"${source.title}" 脚本生成成功，采集到 ${result.initialItems?.length ?? 0} 条数据`,
+              {
+                sourceUrl: source.url,
+                script: result.script,
+                cronExpression: result.cronExpression,
+                initialItems: result.initialItems ?? [],
+              }
+            );
+          } else if (result.sandboxUnavailable && result.script) {
+            writeLog(
+              subscriptionId,
+              'generate_script',
+              'success',
+              `"${source.title}" 脚本已生成（未验证）`,
+              {
+                sourceUrl: source.url,
+                script: result.script,
+                cronExpression: result.cronExpression,
+                initialItems: [],
+                unverified: true,
+              }
+            );
+          } else {
+            writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
           }
-        );
-      } else if (result.sandboxUnavailable && result.script) {
-        writeLog(
-          subscriptionId,
-          'generate_script',
-          'success',
-          `"${source.title}" 脚本已生成（未验证）`,
-          {
-            sourceUrl: source.url,
-            script: result.script,
-            cronExpression: result.cronExpression,
-            initialItems: [],
-            unverified: true,
-          }
-        );
-      } else {
-        writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
-    }
-  }
+        } catch (err) {
+          if (abortedSourceKeys.has(abortKey)) return;
+          const msg = err instanceof Error ? err.message : String(err);
+          writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
+        }
+      })
+    );
+
+  await Promise.all(tasks);
 }
 
 /**
@@ -217,7 +245,7 @@ export async function retryGenerateSourceStep(
       (msg: string) => {
         writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
       },
-      (info) => upsertLLMCall(subscriptionId, info),
+      (info) => upsertLLMCall(subscriptionId, { ...info, sourceUrl: source.url }),
       userId
     );
 
@@ -508,75 +536,81 @@ export async function runManagedPipeline(
         }
 
         const { generateScriptAgent } = await import('@/lib/ai/agents/generateScriptAgent');
+        const limit = pLimit(5);
 
-        for (const source of sourcesToProcess) {
-          if (isCancelled(subscriptionId)) return;
+        const pipelineTasks = sourcesToProcess
+          .filter((source) => !alreadyDoneUrls.has(source.url))
+          .map((source) =>
+            limit(async () => {
+              if (isCancelled(subscriptionId)) return;
 
-          // Skip already-done sources
-          if (alreadyDoneUrls.has(source.url)) continue;
+              writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
 
-          writeLog(subscriptionId, 'generate_script', 'info', `正在为 "${source.title}" 生成脚本...`, { sourceUrl: source.url });
+              try {
+                const result = await generateScriptAgent(
+                  {
+                    title: source.title,
+                    url: source.url,
+                    description: source.description,
+                    criteria,
+                  },
+                  (msg: string) => {
+                    if (isCancelled(subscriptionId)) return;
+                    writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
+                  },
+                  (info) => upsertLLMCall(subscriptionId, { ...info, sourceUrl: source.url }),
+                  userId
+                );
 
-          try {
-            const result = await generateScriptAgent(
-              {
-                title: source.title,
-                url: source.url,
-                description: source.description,
-                criteria,
-              },
-              (msg: string) => {
                 if (isCancelled(subscriptionId)) return;
-                writeLog(subscriptionId, 'generate_script', 'progress', `[${source.title}] ${msg}`, { sourceUrl: source.url });
-              },
-              (info) => upsertLLMCall(subscriptionId, info),
-              userId
-            );
 
-            if (result.success && result.script) {
-              const genSource: GeneratedSource = {
-                title: source.title,
-                url: source.url,
-                description: source.description,
-                script: result.script,
-                cronExpression: result.cronExpression ?? '0 * * * *',
-                initialItems: result.initialItems ?? [],
-                isEnabled: true,
-              };
-              generatedSources.push(genSource);
-              writeLog(
-                subscriptionId,
-                'generate_script',
-                'success',
-                `"${source.title}" 脚本生成成功，采集到 ${result.initialItems?.length ?? 0} 条数据`,
-                { sourceUrl: source.url, script: result.script, cronExpression: result.cronExpression, initialItems: result.initialItems ?? [] }
-              );
-            } else if (result.sandboxUnavailable && result.script) {
-              const genSource: GeneratedSource = {
-                title: source.title,
-                url: source.url,
-                description: source.description,
-                script: result.script,
-                cronExpression: result.cronExpression ?? '0 * * * *',
-                initialItems: [],
-                isEnabled: true,
-              };
-              generatedSources.push(genSource);
-              writeLog(subscriptionId, 'generate_script', 'success', `"${source.title}" 脚本已生成（未验证）`, {
-                sourceUrl: source.url,
-                script: result.script,
-                cronExpression: result.cronExpression,
-                initialItems: [],
-                unverified: true,
-              });
-            } else {
-              writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
-            }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
-          }
-        }
+                if (result.success && result.script) {
+                  const genSource: GeneratedSource = {
+                    title: source.title,
+                    url: source.url,
+                    description: source.description,
+                    script: result.script,
+                    cronExpression: result.cronExpression ?? '0 * * * *',
+                    initialItems: result.initialItems ?? [],
+                    isEnabled: true,
+                  };
+                  generatedSources.push(genSource);
+                  writeLog(
+                    subscriptionId,
+                    'generate_script',
+                    'success',
+                    `"${source.title}" 脚本生成成功，采集到 ${result.initialItems?.length ?? 0} 条数据`,
+                    { sourceUrl: source.url, script: result.script, cronExpression: result.cronExpression, initialItems: result.initialItems ?? [] }
+                  );
+                } else if (result.sandboxUnavailable && result.script) {
+                  const genSource: GeneratedSource = {
+                    title: source.title,
+                    url: source.url,
+                    description: source.description,
+                    script: result.script,
+                    cronExpression: result.cronExpression ?? '0 * * * *',
+                    initialItems: [],
+                    isEnabled: true,
+                  };
+                  generatedSources.push(genSource);
+                  writeLog(subscriptionId, 'generate_script', 'success', `"${source.title}" 脚本已生成（未验证）`, {
+                    sourceUrl: source.url,
+                    script: result.script,
+                    cronExpression: result.cronExpression,
+                    initialItems: [],
+                    unverified: true,
+                  });
+                } else {
+                  writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
+                }
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
+              }
+            })
+          );
+
+        await Promise.all(pipelineTasks);
       }
     }
 

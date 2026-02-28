@@ -28,6 +28,8 @@ export interface LLMCallInfo {
   usage?: { prompt: number; completion: number; total: number };
   /** True while the LLM call is still in progress (streaming). */
   streaming?: boolean;
+  /** Which source this call belongs to (used for per-source log grouping). */
+  sourceUrl?: string;
 }
 
 /** Returns the active LLM provider record, or null if none is set. */

@@ -12,10 +12,12 @@ export function getLLMCalls(subscriptionId: string): LLMCallInfo[] {
   return store.get(subscriptionId) ?? [];
 }
 
-/** Insert or update a call (matched by callIndex). */
+/** Insert or update a call (matched by sourceUrl + callIndex to avoid conflicts during parallel generation). */
 export function upsertLLMCall(subscriptionId: string, info: LLMCallInfo): void {
   const calls = store.get(subscriptionId) ?? [];
-  const idx = calls.findIndex((c) => c.callIndex === info.callIndex);
+  const idx = calls.findIndex(
+    (c) => c.callIndex === info.callIndex && c.sourceUrl === info.sourceUrl
+  );
   if (idx >= 0) {
     calls[idx] = info;
   } else {
