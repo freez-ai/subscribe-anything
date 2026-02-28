@@ -44,17 +44,37 @@ export async function POST(
     const generatedSources: GeneratedSource[] = [];
     let findSourcesError: string | null = null;
 
-    // Extract foundSources from the find_sources success log (last one wins)
-    // Also extract error messages if find_sources failed
+    // Extract foundSources from logs:
+    // 1. Find "已自动选择 X 个数据源" info log (has selected sources, max 5)
+    // 2. Fall back to success log with all sources
     for (const log of logs) {
       if (log.step === 'find_sources') {
-        if (log.level === 'success' && log.payload) {
+        if (log.level === 'info' && log.message.includes('已自动选择') && log.payload) {
+          // Found the info log with selected sources (max 5)
           try {
             const payload = JSON.parse(log.payload);
-            if (Array.isArray(payload)) foundSources = payload as FoundSource[];
+            if (Array.isArray(payload)) {
+              foundSources = payload as FoundSource[];
+              break; // Use this one
+            }
           } catch { /* ignore */ }
         } else if (log.level === 'error') {
           findSourcesError = log.message;
+        }
+      }
+    }
+
+    // If no info log with selected sources, fall back to success log
+    if (foundSources.length === 0) {
+      for (const log of logs) {
+        if (log.step === 'find_sources' && log.level === 'success' && log.payload) {
+          try {
+            const payload = JSON.parse(log.payload);
+            if (Array.isArray(payload)) {
+              foundSources = payload as FoundSource[];
+              break; // Use last success log
+            }
+          } catch { /* ignore */ }
         }
       }
     }
