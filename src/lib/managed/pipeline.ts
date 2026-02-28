@@ -117,7 +117,9 @@ export async function runFindSourcesStep(
       userId
     );
 
-    writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
+    // Auto-select up to 5 sources (prefer recommended) so managed takeover can restore correctly
+    const selected = autoSelectSources(discovered);
+    writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源，已自动选择 ${selected.length} 个`, selected);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     writeLog(subscriptionId, 'find_sources', 'error', `发现数据源失败：${msg}`);
@@ -500,8 +502,8 @@ export async function runManagedPipeline(
             foundSources = selected;
 
             // Always write sources log — even if cancelled (watch mode needs to see results)
-            writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源`, discovered);
-            writeLog(subscriptionId, 'find_sources', 'info', `已自动选择 ${selected.length} 个数据源`);
+            // Log the selected sources (max 5) so takeover can restore correctly
+            writeLog(subscriptionId, 'find_sources', 'success', `发现 ${discovered.length} 个数据源，已自动选择 ${selected.length} 个`, selected);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             writeLog(subscriptionId, 'find_sources', 'error', `发现数据源失败：${msg}`);
