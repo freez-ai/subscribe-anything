@@ -33,7 +33,7 @@ function formatRelativeTime(date: Date | null | undefined): string {
 
 const SWIPE_THRESHOLD = 100;
 const SWIPE_MAX = 180; // Width for both toggle and delete buttons
-const DELETE_ONLY_WIDTH = 96; // Width for delete-only state (w-24 = 6rem)
+const DELETE_ONLY_WIDTH = 80; // Width for delete-only state
 
 export default function SubscriptionCard({
   subscription,
@@ -82,7 +82,11 @@ export default function SubscriptionCard({
 
   // Cards in creating state have special click behavior
   const handleCardClick = () => {
-    if (swipeX < -SWIPE_THRESHOLD / 2) return; // Don't click if swiped
+    // Don't click if swiped past half threshold
+    const halfThreshold = (!isManagedCreating && !isManualCreating && !isFailed)
+      ? SWIPE_THRESHOLD / 2
+      : DELETE_ONLY_WIDTH / 2;
+    if (swipeX < -halfThreshold) return;
 
     if (managedStatus === 'manual_creating' || managedStatus === 'managed_creating' || managedStatus === 'failed') {
       // All creating/failed states resume wizard
@@ -113,23 +117,27 @@ export default function SubscriptionCard({
     // Only allow left swipe (negative deltaX) and limit vertical movement
     if (deltaX < 0 && Math.abs(deltaY) < 50) {
       setIsSwiping(true);
-      // Clamp between 0 and -SWIPE_MAX
-      const clampedDeltaX = Math.max(-SWIPE_MAX, Math.min(0, deltaX));
+      // Clamp based on card state
+      const maxSwipe = (!isManagedCreating && !isManualCreating && !isFailed) ? SWIPE_MAX : DELETE_ONLY_WIDTH;
+      const clampedDeltaX = Math.max(-maxSwipe, Math.min(0, deltaX));
       setSwipeX(clampedDeltaX);
     }
-  }, []);
+  }, [isManagedCreating, isManualCreating, isFailed]);
 
   const handleTouchEnd = useCallback(() => {
     if (!isSwiping) return;
 
+    // Calculate snap position based on card state
+    const snapPosition = (!isManagedCreating && !isManualCreating && !isFailed) ? -SWIPE_MAX : -DELETE_ONLY_WIDTH;
+
     // If swiped past threshold, snap to open, else close
     if (swipeX < -SWIPE_THRESHOLD) {
-      setSwipeX(-SWIPE_MAX);
+      setSwipeX(snapPosition);
     } else {
       setSwipeX(0);
     }
     setIsSwiping(false);
-  }, [isSwiping, swipeX]);
+  }, [isSwiping, swipeX, isManagedCreating, isManualCreating, isFailed]);
 
   const handleDelete = useCallback(() => {
     setSwipeX(0);
@@ -153,7 +161,9 @@ export default function SubscriptionCard({
       <div
         className="absolute inset-y-0 right-0 flex transition-transform"
         style={{
-          transform: `translateX(${swipeX + SWIPE_MAX}px)`,
+          transform: `translateX(${
+            !isManagedCreating && !isManualCreating && !isFailed ? swipeX + SWIPE_MAX : swipeX + DELETE_ONLY_WIDTH
+          }px)`,
           width: `${!isManagedCreating && !isManualCreating && !isFailed ? SWIPE_MAX : DELETE_ONLY_WIDTH}px`,
         }}
       >
@@ -177,7 +187,7 @@ export default function SubscriptionCard({
         {/* Delete button (right side) */}
         <div
           className={`bg-destructive flex flex-col items-center justify-center gap-1 text-white ${
-            !isManagedCreating && !isManualCreating && !isFailed ? 'flex-1' : 'w-24'
+            !isManagedCreating && !isManualCreating && !isFailed ? 'flex-1' : 'w-20'
           }`}
           onClick={(e) => {
             e.stopPropagation();
