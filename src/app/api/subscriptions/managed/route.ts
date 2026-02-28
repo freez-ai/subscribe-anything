@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { subscriptions } from '@/lib/db/schema';
+import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
 import { runManagedPipeline, abortAllSources } from '@/lib/managed/pipeline';
+import { clearLLMCalls } from '@/lib/managed/llmCallStore';
 import type { ManagedStartStep } from '@/lib/managed/pipeline';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 
@@ -72,6 +73,19 @@ export async function POST(req: Request) {
 
       // Cancel any running source generation tasks (from run-step) before managed pipeline takes over
       abortAllSources(existingSubscriptionId);
+
+      // Clear old LLM calls and generate_script logs so managed pipeline starts from a clean state.
+      // The managed pipeline uses initialGeneratedSources (passed from frontend) to skip
+      // already-completed sources, not the database logs.
+      clearLLMCalls(existingSubscriptionId);
+      db.delete(managedBuildLogs)
+        .where(
+          and(
+            eq(managedBuildLogs.subscriptionId, existingSubscriptionId),
+            eq(managedBuildLogs.step, 'generate_script')
+          )
+        )
+        .run();
 
       db.update(subscriptions)
         .set({
