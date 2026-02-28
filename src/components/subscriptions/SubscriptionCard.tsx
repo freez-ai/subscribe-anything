@@ -33,7 +33,7 @@ function formatRelativeTime(date: Date | null | undefined): string {
 
 const SWIPE_THRESHOLD = 100;
 const SWIPE_MAX = 180; // Width for both toggle and delete buttons
-const DELETE_ONLY_WIDTH = 80; // Width for delete-only state
+const DELETE_ONLY_WIDTH = 120; // Width for delete-only state
 
 export default function SubscriptionCard({
   subscription,
@@ -103,6 +103,9 @@ export default function SubscriptionCard({
   const isFailed = managedStatus === 'failed';
   const isManualCreating = managedStatus === 'manual_creating';
 
+  // Calculate action panel offset based on card state
+  const actionOffset = (!isManagedCreating && !isManualCreating && !isFailed) ? SWIPE_MAX : DELETE_ONLY_WIDTH;
+
   // Touch handlers for swipe
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -127,11 +130,13 @@ export default function SubscriptionCard({
   const handleTouchEnd = useCallback(() => {
     if (!isSwiping) return;
 
-    // Calculate snap position based on card state
-    const snapPosition = (!isManagedCreating && !isManualCreating && !isFailed) ? -SWIPE_MAX : -DELETE_ONLY_WIDTH;
+    // Calculate threshold and snap position based on card state
+    const isCreatingOrFailed = isManagedCreating || isManualCreating || isFailed;
+    const threshold = isCreatingOrFailed ? DELETE_ONLY_WIDTH / 2 : SWIPE_THRESHOLD;
+    const snapPosition = isCreatingOrFailed ? -DELETE_ONLY_WIDTH : -SWIPE_MAX;
 
     // If swiped past threshold, snap to open, else close
-    if (swipeX < -SWIPE_THRESHOLD) {
+    if (swipeX < -threshold) {
       setSwipeX(snapPosition);
     } else {
       setSwipeX(0);
@@ -159,12 +164,10 @@ export default function SubscriptionCard({
     >
       {/* Action buttons (revealed on swipe) */}
       <div
-        className="absolute inset-y-0 right-0 flex transition-transform"
+        className="absolute inset-y-0 right-0 flex"
         style={{
-          transform: `translateX(${
-            !isManagedCreating && !isManualCreating && !isFailed ? swipeX + SWIPE_MAX : swipeX + DELETE_ONLY_WIDTH
-          }px)`,
-          width: `${!isManagedCreating && !isManualCreating && !isFailed ? SWIPE_MAX : DELETE_ONLY_WIDTH}px`,
+          transform: `translateX(${actionOffset + swipeX}px)`,
+          width: `${actionOffset}px`,
         }}
       >
         {/* Toggle button (left side) - only for non-creating cards */}
@@ -187,15 +190,15 @@ export default function SubscriptionCard({
         {/* Delete button (right side) */}
         <div
           className={`bg-destructive flex flex-col items-center justify-center gap-1 text-white ${
-            !isManagedCreating && !isManualCreating && !isFailed ? 'flex-1' : 'w-20'
+            !isManagedCreating && !isManualCreating && !isFailed ? 'flex-1' : 'w-28'
           }`}
           onClick={(e) => {
             e.stopPropagation();
             handleDelete();
           }}
         >
-          <Trash2 className="h-5 w-5" />
-          <span className="text-[10px]">删除</span>
+          <Trash2 className="h-6 w-6" />
+          <span className="text-xs">删除</span>
         </div>
       </div>
 
