@@ -284,16 +284,25 @@ export default function SubscriptionCard({
                 </Button>
               </>
             ) : (
-              // Normal state / manual creating / failed: show delete button only (desktop)
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hidden h-8 w-8 md:flex text-muted-foreground hover:text-destructive"
-                onClick={() => onDelete(subscription.id)}
-                aria-label="删除订阅"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              // Normal state / manual creating / failed: show switch + delete (desktop)
+              <>
+                {!isManagedCreating && !isManualCreating && !isFailed && (
+                  <Switch
+                    checked={subscription.isEnabled}
+                    onCheckedChange={(checked) => onToggle(subscription.id, checked)}
+                    aria-label={subscription.isEnabled ? '禁用订阅' : '启用订阅'}
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hidden h-8 w-8 md:flex text-muted-foreground hover:text-destructive"
+                  onClick={() => onDelete(subscription.id)}
+                  aria-label="删除订阅"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
             )}
           </div>
         </div>
