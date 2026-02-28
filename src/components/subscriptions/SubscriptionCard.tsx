@@ -48,10 +48,18 @@ export default function SubscriptionCard({
 
   // Step label mapping
   const stepLabels: Record<number, string> = {
-    1: '填写主题',
-    2: '发现源',
-    3: '生成脚本',
-    4: '确认',
+    1: '填写主题中',
+    2: '发现源中',
+    3: '生成脚本中',
+    4: '确认中',
+  };
+
+  // Step badge color classes (subtle, not prominent)
+  const stepBadgeColors: Record<number, { bg: string; text: string }> = {
+    1: { bg: 'bg-slate-100 dark:bg-slate-800/40', text: 'text-slate-600 dark:text-slate-400' },
+    2: { bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-600 dark:text-violet-400' },
+    3: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-600 dark:text-teal-400' },
+    4: { bg: 'bg-rose-100 dark:bg-rose-900/30', text: 'text-rose-600 dark:text-rose-400' },
   };
 
   // Only show latestLog if the log step matches the current wizard step
@@ -115,8 +123,8 @@ export default function SubscriptionCard({
           )}
           {managedStatus === 'manual_creating' && (
             <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5">
-              {stepLabel && (
-                <span className="inline-flex items-center rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 text-[10px] font-medium shrink-0">
+              {stepLabel && currentStep && (
+                <span className={`inline-flex items-center rounded ${stepBadgeColors[currentStep].bg} ${stepBadgeColors[currentStep].text} px-1.5 py-0.5 text-[10px] font-medium shrink-0`}>
                   {stepLabel}
                 </span>
               )}
@@ -125,8 +133,8 @@ export default function SubscriptionCard({
           )}
           {managedStatus === 'managed_creating' && (
             <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5">
-              {stepLabel && (
-                <span className="inline-flex items-center rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[10px] font-medium shrink-0">
+              {stepLabel && currentStep && (
+                <span className={`inline-flex items-center rounded ${stepBadgeColors[currentStep].bg} ${stepBadgeColors[currentStep].text} px-1.5 py-0.5 text-[10px] font-medium shrink-0`}>
                   {stepLabel}
                 </span>
               )}
@@ -135,8 +143,8 @@ export default function SubscriptionCard({
           )}
           {managedStatus === 'failed' && (
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 flex items-start gap-1.5">
-              {stepLabel && (
-                <span className="inline-flex items-center rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-px">
+              {stepLabel && currentStep && (
+                <span className={`inline-flex items-center rounded ${stepBadgeColors[currentStep].bg} ${stepBadgeColors[currentStep].text} px-1.5 py-0.5 text-[10px] font-medium shrink-0 mt-px`}>
                   {stepLabel}
                 </span>
               )}
