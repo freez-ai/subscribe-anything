@@ -192,8 +192,18 @@ export default function Step2FindSources({
   };
 
   // Connect to SSE on mount if we have a subscriptionId and sources not yet cached
+  // If managedError exists, show it instead of connecting (managed pipeline already failed)
   useEffect(() => {
-    if (state.foundSources.length === 0 && state.subscriptionId) {
+    if (state.managedError && state.foundSources.length === 0) {
+      setErrorMessage(state.managedError);
+      if (
+        state.managedError.toLowerCase().includes('search provider') ||
+        state.managedError.toLowerCase().includes('no search') ||
+        state.managedError.toLowerCase().includes('搜索供应商')
+      ) {
+        setIsSearchProviderError(true);
+      }
+    } else if (state.foundSources.length === 0 && state.subscriptionId) {
       connectSSE();
     }
     return () => {
@@ -212,7 +222,7 @@ export default function Step2FindSources({
     setErrorMessage('');
     setIsSearchProviderError(false);
     setLLMCalls([]);
-    onStateChange({ step2LlmCalls: [] });
+    onStateChange({ step2LlmCalls: [], managedError: null });
 
     // Restart find_sources step in background (clears old logs)
     await fetch(`/api/subscriptions/${state.subscriptionId}/run-step`, {

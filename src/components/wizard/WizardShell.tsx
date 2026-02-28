@@ -159,6 +159,7 @@ export default function WizardShell() {
         topic,
         criteria,
         subscriptionId: data.id,
+        managedError: null, // Clear any previous managed error
       };
       setState(newState);
       persistToDb(newState);
@@ -185,6 +186,7 @@ export default function WizardShell() {
       ...state,
       step: 3,
       selectedIndices,
+      managedError: null, // Clear managed error when proceeding manually
     };
     setState(newState);
     persistToDb(newState);
@@ -407,12 +409,26 @@ export default function WizardShell() {
                   body: JSON.stringify({ topic, criteria, startStep: 'find_sources' }),
                 });
                 if (res.ok) {
-                  const { id } = await res.json() as { id: string };
-                  // Immediately call managed-takeover so the subscription transitions to
-                  // manual_creating with wizardStateJson:{step:2,watchingManagedId}.
-                  // When the user taps the card again, WizardShell will load step 2
-                  // directly from wizardStateJson (no extra async round-trip → no flash).
-                  await fetch(`/api/subscriptions/${id}/managed-takeover`, { method: 'POST' });
+                  const data = await res.json() as { id: string };
+                  // Pre-populate wizardStateJson so user can resume later without extra fetch
+                  // The managed pipeline will run in background. If user clicks card later,
+                  // managed-takeover will reconstruct state from logs.
+                  await fetch(`/api/subscriptions/${data.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      wizardStateJson: JSON.stringify({
+                        step: 2,
+                        topic,
+                        criteria,
+                        foundSources: [],
+                        selectedIndices: [],
+                        generatedSources: [],
+                        subscriptionId: data.id,
+                        watchingManagedId: data.id,
+                      }),
+                    }),
+                  });
                 }
               } catch { /* ignore */ }
               try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }

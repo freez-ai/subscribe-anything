@@ -42,14 +42,20 @@ export async function POST(
 
     let foundSources: FoundSource[] = [];
     const generatedSources: GeneratedSource[] = [];
+    let findSourcesError: string | null = null;
 
     // Extract foundSources from the find_sources success log (last one wins)
+    // Also extract error messages if find_sources failed
     for (const log of logs) {
-      if (log.step === 'find_sources' && log.level === 'success' && log.payload) {
-        try {
-          const payload = JSON.parse(log.payload);
-          if (Array.isArray(payload)) foundSources = payload as FoundSource[];
-        } catch { /* ignore */ }
+      if (log.step === 'find_sources') {
+        if (log.level === 'success' && log.payload) {
+          try {
+            const payload = JSON.parse(log.payload);
+            if (Array.isArray(payload)) foundSources = payload as FoundSource[];
+          } catch { /* ignore */ }
+        } else if (log.level === 'error') {
+          findSourcesError = log.message;
+        }
       }
     }
 
@@ -101,6 +107,8 @@ export async function POST(
       subscriptionId: id,
       // In watch mode, Step2 polls this subscription's logs for find_sources output
       watchingManagedId: watchMode ? id : undefined,
+      // Error message from managed pipeline (if any)
+      managedError: findSourcesError ?? sub.managedError ?? null,
     };
 
     // Switch status to manual_creating.
