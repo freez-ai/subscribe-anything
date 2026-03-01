@@ -657,7 +657,7 @@ function RepairDialog({ source, onClose, showToast }: {
     } catch (e) {
       if (e instanceof Error && e.name !== 'AbortError') addMsg('连接中断');
     } finally {
-      setDone(true);
+      if (!ctrl.signal.aborted) setDone(true);
     }
   };
 
@@ -702,21 +702,15 @@ function RepairDialog({ source, onClose, showToast }: {
               <p className="text-muted-foreground">{m.text}</p>
             </div>
           ))}
-          {!done && (
-            <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>AI 正在修复中…</span>
-              </div>
-              {llmCalls.length > 0 && (
-                <button
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setShowLog(true)}
-                >
-                  <ScrollText className="h-3 w-3" />
-                  查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
-                </button>
-              )}
+          {!done && llmCalls.length > 0 && (
+            <div className="flex justify-center py-1">
+              <button
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowLog(true)}
+              >
+                <ScrollText className="h-3 w-3" />
+                查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
+              </button>
             </div>
           )}
         </div>
