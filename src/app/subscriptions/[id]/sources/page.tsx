@@ -495,6 +495,12 @@ function RepairDialog({ source, onClose, showToast }: {
   useEffect(() => {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    setMessages([]);
+    setLlmCalls([]);
+    setTotalTokens(0);
+    setDone(false);
+    setRepairedScript(null);
+    countedCallsRef.current.clear();
     runRepair(ctrl);
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
