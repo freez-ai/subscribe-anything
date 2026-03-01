@@ -14,17 +14,20 @@ const DEFAULT_PROMPT_TEMPLATES = [
     content: `为主题"{{topic}}"（监控条件：{{criteria}}）找到 5-10 个高质量数据源。
 
 **步骤**
-1. webSearch：先确认实体的标准名称/别名，再搜索对应订阅源；优先选有规律更新、内容相关、可程序化抓取的来源
+1. webSearch：确认实体标准名称/别名，搜索相关订阅源。**同时搜索官方 RSS/Atom 源**（如搜"X站 RSS"、"X站 feed"），很多网站本身提供官方 RSS，优先使用
 
-2. rssRadar：将所有域名**合并为一次**调用；queries 只传裸域名（如 bilibili.com），不传完整 URL 或用户 ID
-   - 有匹配路由 → 将 \`:param\` 占位符填入已知参数，构造完整 RSS URL
+2. checkFeed：将步骤 1 中发现的所有 RSS URL **合并为一次**调用，传 \`urls\` 和 \`keywords\`（实体所有已知别名）
+   - \`valid: true\` → 直接采用，无需再查 rssRadar
+   - 失败 → 见步骤 3
+
+3. rssRadar（仅对尚无有效 RSS 的域名调用）：queries 只传裸域名（如 bilibili.com）
+   - 有匹配路由 → 填入 \`:param\` 占位符构造完整 URL，再用 checkFeed 验证
    - 无匹配路由 → 保留原始网页 URL；禁止自行拼造 RSSHub 路径
 
-3. checkFeed：将所有 RSS URL **合并为一次**调用，传 \`urls\`（RSS URL 列表）和 \`keywords\`（实体所有已知别名，共用）
-   - \`valid: true\` → 保留
+4. 修复无效 RSS：
    - \`templateMismatch: true\` → 修正 URL 结构后重新验证
-   - \`keywordFound: false\` → webSearch 找到正确实体 ID，重新构造后验证
-   - 其他失败 → 同上修复；仍失败则回退为原始网页 URL；原始网页 URL 无需验证
+   - \`keywordFound: false\` → webSearch 查找正确实体 ID，重新构造后验证
+   - 仍失败 → 回退为原始网页 URL（无需验证）
 
 **输出（JSON 数组）**
 每项：\`title\`、\`url\`（有效 RSS 优先，否则网页 URL）、\`description\`（内容特点、更新频率、是否含监控指标）、\`recommended\`（质量高/更新频繁/RSS 有效 → true，否则 false）；监控条件不为"无"时加 \`canProvideCriteria\`（能否采集到监控所需指标）
