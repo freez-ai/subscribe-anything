@@ -1,6 +1,6 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { sources, subscriptions } from '@/lib/db/schema';
+import { sources, subscriptions, messageCards } from '@/lib/db/schema';
 import { validateCron } from '@/lib/utils/cron';
 import { requireAuth } from '@/lib/auth';
 
@@ -105,6 +105,8 @@ export async function DELETE(
     const result = await verifySourceOwnership(db, id, session.userId);
     if (!result) return Response.json({ error: 'Not found' }, { status: 404 });
 
+    const subscriptionId = result.sources.subscriptionId;
+
     try {
       const { jobManager } = await import('@/lib/scheduler/jobManager');
       jobManager.unscheduleSource(id);
@@ -113,6 +115,22 @@ export async function DELETE(
     }
 
     db.delete(sources).where(eq(sources.id, id)).run();
+
+    // Recalculate subscription unreadCount and totalCount after cascade delete
+    const counts = db.select({
+      total: sql<number>`count(*)`,
+      unread: sql<number>`count(*) filter (where ${messageCards.readAt} is null)`,
+    }).from(messageCards).where(eq(messageCards.subscriptionId, subscriptionId)).get();
+
+    db.update(subscriptions)
+      .set({
+        totalCount: counts?.total ?? 0,
+        unreadCount: counts?.unread ?? 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptions.id, subscriptionId))
+      .run();
+
     return new Response(null, { status: 204 });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {
