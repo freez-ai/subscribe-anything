@@ -734,20 +734,23 @@ function RepairDialog({ source, onClose, showToast }: {
           </div>
         )}
 
-        {/* Actions */}
-        {done && (
-          <div className="px-5 py-4 border-t flex gap-2">
-            {repairedScript ? (
-              <Button onClick={applyFix} disabled={applying} className="flex-1 gap-2">
-                {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                应用修复
-              </Button>
-            ) : null}
-            <Button variant="outline" onClick={onClose} className={repairedScript ? '' : 'flex-1'}>
-              {repairedScript ? '取消' : '关闭'}
+        {/* Actions — always visible */}
+        <div className="px-5 py-4 border-t flex gap-2">
+          {!done ? (
+            <Button disabled className="flex-1 gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              修复中…
             </Button>
-          </div>
-        )}
+          ) : repairedScript ? (
+            <Button onClick={applyFix} disabled={applying} className="flex-1 gap-2">
+              {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              应用修复
+            </Button>
+          ) : null}
+          <Button variant="outline" onClick={onClose} className={(!done || repairedScript) ? '' : 'flex-1'}>
+            {!done ? '取消' : repairedScript ? '取消' : '关闭'}
+          </Button>
+        </div>
       </div>
 
       {/* LLM log dialog */}
