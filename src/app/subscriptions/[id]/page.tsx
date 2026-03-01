@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, LayoutGrid, AlignJustify, ExternalLink,
   X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2, Bell, Heart, ScrollText,
+  History, Star, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -720,6 +721,8 @@ function AnalyzeDialog({
   const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
   const [totalTokens, setTotalTokens] = useState(0);
   const [showLog, setShowLog] = useState(false);
+  const [savedReportId, setSavedReportId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const countedCallsRef = useRef(new Set<number>());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -728,6 +731,7 @@ function AnalyzeDialog({
     setError('');
     setLlmCalls([]);
     setTotalTokens(0);
+    setSavedReportId(null);
     countedCallsRef.current.clear();
     setStreaming(true);
     const ctrl = new AbortController();
@@ -770,6 +774,9 @@ function AnalyzeDialog({
                 setError(ev.message || '发生错误');
                 return;
               }
+              if (ev.type === 'done' && ev.reportId) {
+                setSavedReportId(ev.reportId);
+              }
               if (ev.type === 'llm_call') {
                 const info = ev as unknown as LLMCallInfo;
                 setLlmCalls((prev) => {
@@ -797,8 +804,9 @@ function AnalyzeDialog({
     }
   };
 
-  const openInNewWindow = () => {
-    const fullHtml = `<html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:20px;line-height:1.6;color:#111}h2{font-size:1.1rem;font-weight:600;margin-top:1.5rem}ul{padding-left:1.5rem}li{margin-bottom:.25rem}strong{color:#333}</style></head><body>${html}</body></html>`;
+  const openInNewWindow = (htmlContent?: string) => {
+    const content = htmlContent ?? html;
+    const fullHtml = `<html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:20px;line-height:1.6;color:#111}h2{font-size:1.1rem;font-weight:600;margin-top:1.5rem}ul{padding-left:1.5rem}li{margin-bottom:.25rem}strong{color:#333}</style></head><body>${content}</body></html>`;
     const win = window.open('', '_blank');
     if (win) {
       win.document.open();
@@ -812,6 +820,7 @@ function AnalyzeDialog({
     setError('');
     setLlmCalls([]);
     setTotalTokens(0);
+    setSavedReportId(null);
     countedCallsRef.current.clear();
   };
 
@@ -826,105 +835,146 @@ function AnalyzeDialog({
       <div className="bg-background rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
-          <h2 className="font-semibold text-lg">AI 数据分析</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="px-5 py-5 overflow-y-auto flex-1">
-          {/* Idle: form */}
-          {isIdle && (
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="text-sm font-medium block mb-1.5">分析要求（可选）</label>
-                <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                  rows={3}
-                  placeholder="例如：总结最近的趋势，哪些产品最受关注？"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </div>
-
-              {/* Card selector with quick select */}
-              <CardSelector
-                subscriptionId={subscriptionId}
-                sourceId={sourceId}
-                selectedIds={selectedCardIds}
-                onSelectionChange={setSelectedCardIds}
-              />
-            </div>
-          )}
-
-          {/* Streaming */}
-          {streaming && (
-            <div className="flex flex-col items-center gap-3 py-6">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">AI 正在分析数据，请稍候...</p>
-              {/* LLM log button */}
-              {llmCalls.length > 0 && (
-                <button
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setShowLog(true)}
-                >
-                  <ScrollText className="h-3 w-3" />
-                  查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Done */}
-          {isDone && (
-            <div className="flex flex-col items-center gap-2 py-4 text-center">
-              <CheckCircle2 className="h-10 w-10 text-green-500" />
-              <p className="font-medium">分析完成</p>
-              <p className="text-sm text-muted-foreground">点击「查看」在新窗口中打开分析报告</p>
-              {/* LLM log button */}
-              {llmCalls.length > 0 && (
-                <button
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setShowLog(true)}
-                >
-                  <ScrollText className="h-3 w-3" />
-                  查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Error */}
-          {error && !streaming && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 pb-5 flex gap-2 border-t pt-4 flex-shrink-0">
-          {isIdle && (
-            <Button onClick={start} className="gap-2" disabled={!canStart}>
-              <BarChart2 className="h-4 w-4" />
-              开始分析
-            </Button>
-          )}
-          {isDone && (
+          {showHistory ? (
             <>
-              <Button onClick={openInNewWindow} className="gap-2">
-                <ExternalLink className="h-4 w-4" />
-                查看
-              </Button>
-              <Button variant="outline" onClick={reset}>重新分析</Button>
+              <h2 className="font-semibold text-lg">历史报告</h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="text-muted-foreground hover:text-foreground p-1"
+                  title="返回分析"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="font-semibold text-lg">AI 数据分析</h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowHistory(true)}
+                  className="text-muted-foreground hover:text-foreground p-1"
+                  title="历史报告"
+                >
+                  <History className="h-5 w-5" />
+                </button>
+                <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </>
           )}
-          {error && !streaming && (
-            <Button variant="outline" onClick={reset}>重新分析</Button>
-          )}
-          <Button variant="ghost" onClick={onClose}>关闭</Button>
         </div>
+
+        {showHistory ? (
+          <ReportHistoryView
+            subscriptionId={subscriptionId}
+            onViewReport={(htmlContent) => openInNewWindow(htmlContent)}
+          />
+        ) : (
+          <>
+            {/* Body */}
+            <div className="px-5 py-5 overflow-y-auto flex-1">
+              {/* Idle: form */}
+              {isIdle && (
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <label className="text-sm font-medium block mb-1.5">分析要求（可选）</label>
+                    <textarea
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                      rows={3}
+                      placeholder="例如：总结最近的趋势，哪些产品最受关注？"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Card selector with quick select */}
+                  <CardSelector
+                    subscriptionId={subscriptionId}
+                    sourceId={sourceId}
+                    selectedIds={selectedCardIds}
+                    onSelectionChange={setSelectedCardIds}
+                  />
+                </div>
+              )}
+
+              {/* Streaming */}
+              {streaming && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">AI 正在分析数据，请稍候...</p>
+                  {/* LLM log button */}
+                  {llmCalls.length > 0 && (
+                    <button
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setShowLog(true)}
+                    >
+                      <ScrollText className="h-3 w-3" />
+                      查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Done */}
+              {isDone && (
+                <div className="flex flex-col items-center gap-2 py-4 text-center">
+                  <CheckCircle2 className="h-10 w-10 text-green-500" />
+                  <p className="font-medium">分析完成</p>
+                  <p className="text-sm text-muted-foreground">
+                    点击「查看」在新窗口中打开分析报告
+                    {savedReportId && <span className="block text-xs mt-1 text-green-600">已自动保存到历史报告</span>}
+                  </p>
+                  {/* LLM log button */}
+                  {llmCalls.length > 0 && (
+                    <button
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setShowLog(true)}
+                    >
+                      <ScrollText className="h-3 w-3" />
+                      查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Error */}
+              {error && !streaming && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 pb-5 flex gap-2 border-t pt-4 flex-shrink-0">
+              {isIdle && (
+                <Button onClick={start} className="gap-2" disabled={!canStart}>
+                  <BarChart2 className="h-4 w-4" />
+                  开始分析
+                </Button>
+              )}
+              {isDone && (
+                <>
+                  <Button onClick={() => openInNewWindow()} className="gap-2">
+                    <ExternalLink className="h-4 w-4" />
+                    查看
+                  </Button>
+                  <Button variant="outline" onClick={reset}>重新分析</Button>
+                </>
+              )}
+              {error && !streaming && (
+                <Button variant="outline" onClick={reset}>重新分析</Button>
+              )}
+              <Button variant="ghost" onClick={onClose}>关闭</Button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* LLM log dialog */}
@@ -937,6 +987,186 @@ function AnalyzeDialog({
           onClose={() => setShowLog(false)}
         />
       )}
+    </div>
+  );
+}
+
+/* ── Report History View ── */
+interface ReportSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  cardCount: number;
+  isStarred: boolean;
+  createdAt: string;
+}
+
+function ReportHistoryView({
+  subscriptionId,
+  onViewReport,
+}: {
+  subscriptionId: string;
+  onViewReport: (htmlContent: string) => void;
+}) {
+  const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'starred'>('all');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = filter === 'starred' ? '?starred=true' : '';
+      const res = await fetch(`/api/subscriptions/${subscriptionId}/reports${params}`);
+      if (res.ok) {
+        setReports(await res.json());
+      }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, [subscriptionId, filter]);
+
+  useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  const handleToggleStar = async (report: ReportSummary) => {
+    const newStarred = !report.isStarred;
+    setReports((prev) => prev.map((r) =>
+      r.id === report.id ? { ...r, isStarred: newStarred } : r
+    ));
+    await fetch(`/api/subscriptions/${subscriptionId}/reports/${report.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isStarred: newStarred }),
+    });
+    // If filtering by starred and we un-starred, remove from list
+    if (filter === 'starred' && !newStarred) {
+      setReports((prev) => prev.filter((r) => r.id !== report.id));
+    }
+  };
+
+  const handleDelete = async (reportId: string) => {
+    setDeletingId(null);
+    await fetch(`/api/subscriptions/${subscriptionId}/reports/${reportId}`, { method: 'DELETE' });
+    setReports((prev) => prev.filter((r) => r.id !== reportId));
+  };
+
+  const handleView = async (reportId: string) => {
+    try {
+      const res = await fetch(`/api/subscriptions/${subscriptionId}/reports/${reportId}`);
+      if (!res.ok) return;
+      const report = await res.json();
+      onViewReport(report.htmlContent);
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Filter tabs */}
+      <div className="flex gap-1 px-5 pt-4 pb-2">
+        <button
+          onClick={() => setFilter('all')}
+          className={[
+            'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+            filter === 'all'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted text-muted-foreground hover:text-foreground',
+          ].join(' ')}
+        >
+          全部
+        </button>
+        <button
+          onClick={() => setFilter('starred')}
+          className={[
+            'px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1',
+            filter === 'starred'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted text-muted-foreground hover:text-foreground',
+          ].join(' ')}
+        >
+          <Star className="h-3 w-3" />
+          星标
+        </button>
+      </div>
+
+      {/* Report list */}
+      <div className="flex-1 overflow-y-auto px-5 pb-5">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : reports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <History className="h-10 w-10 text-muted-foreground/40 mb-3" />
+            <p className="text-sm text-muted-foreground">
+              {filter === 'starred' ? '暂无星标报告' : '暂无分析报告'}
+            </p>
+            <p className="text-xs text-muted-foreground/70 mt-1">
+              分析完成后报告会自动保存在这里
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {reports.map((report) => (
+              <div
+                key={report.id}
+                className="border rounded-lg p-3 hover:bg-accent/40 transition-colors group"
+              >
+                <div className="flex items-start gap-2">
+                  <div
+                    className="flex-1 min-w-0 cursor-pointer"
+                    onClick={() => handleView(report.id)}
+                  >
+                    <p className="text-sm font-medium line-clamp-2 leading-snug">{report.title}</p>
+                    {report.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{report.description}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5 text-[11px] text-muted-foreground">
+                      <span>{formatDistanceToNow(report.createdAt)}</span>
+                      <span>·</span>
+                      <span>{report.cardCount} 条数据</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                      onClick={() => handleToggleStar(report)}
+                      className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                      title={report.isStarred ? '取消星标' : '加星标'}
+                    >
+                      <Star className={[
+                        'h-4 w-4',
+                        report.isStarred ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground',
+                      ].join(' ')} />
+                    </button>
+                    {deletingId === report.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDelete(report.id)}
+                          className="px-2 py-1 rounded text-xs bg-destructive text-destructive-foreground"
+                        >
+                          确认
+                        </button>
+                        <button
+                          onClick={() => setDeletingId(null)}
+                          className="px-2 py-1 rounded text-xs bg-muted text-muted-foreground"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeletingId(report.id)}
+                        className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                        title="删除"
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { eq, desc, and, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { subscriptions, messageCards, sources } from '@/lib/db/schema';
+import { subscriptions, messageCards, sources, analysisReports } from '@/lib/db/schema';
 import { sseStream } from '@/lib/utils/streamResponse';
 import { analyzeAgent } from '@/lib/ai/agents/analyzeAgent';
 import type { LLMCallInfo } from '@/lib/ai/client';
@@ -88,6 +88,8 @@ export async function POST(
     }
 
     return sseStream(async (emit) => {
+      let accumulatedHtml = '';
+
       await analyzeAgent(
         {
           topic: sub.topic,
@@ -103,13 +105,39 @@ export async function POST(
           })),
         },
         {
-          onChunk: (html) => emit({ type: 'chunk', html }),
+          onChunk: (html) => {
+            accumulatedHtml += html;
+            emit({ type: 'chunk', html });
+          },
           onCall: (info: LLMCallInfo) => emit({ type: 'llm_call', ...info }),
           onToolCall: (name, detail) => emit({ type: 'tool_call', name, detail }),
         },
         session.userId
       );
-      emit({ type: 'done' });
+
+      // Extract title from HTML: first <h1> or first line of text
+      let title = '分析报告';
+      const h1Match = accumulatedHtml.match(/<h1[^>]*>(.*?)<\/h1>/i);
+      if (h1Match) {
+        title = h1Match[1].replace(/<[^>]*>/g, '').trim();
+      } else {
+        const textMatch = accumulatedHtml.replace(/<[^>]*>/g, ' ').trim();
+        if (textMatch) {
+          title = textMatch.slice(0, 80);
+        }
+      }
+
+      // Save report to database
+      const report = db.insert(analysisReports).values({
+        subscriptionId: id,
+        userId: session.userId,
+        title,
+        description: description || null,
+        htmlContent: accumulatedHtml,
+        cardCount: cards.length,
+      }).returning({ id: analysisReports.id }).get();
+
+      emit({ type: 'done', reportId: report.id });
     });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {

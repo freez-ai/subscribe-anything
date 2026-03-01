@@ -267,12 +267,29 @@ export const oauthConfig = sqliteTable('oauth_config', {
     .notNull(),
 });
 
+// ─── analysis_reports ────────────────────────────────────────────────────────
+export const analysisReports = sqliteTable('analysis_reports', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  subscriptionId: text('subscription_id').notNull()
+    .references(() => subscriptions.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  description: text('description'),
+  htmlContent: text('html_content').notNull(),
+  cardCount: integer('card_count').notNull().default(0),
+  isStarred: integer('is_starred', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date()).notNull(),
+});
+
 // ─── Relations ───────────────────────────────────────────────────────────────
 export const usersRelations = relations(users, ({ many }) => ({
   subscriptions: many(subscriptions),
   favorites: many(favorites),
   promptTemplates: many(promptTemplates),
   sessions: many(sessions),
+  analysisReports: many(analysisReports),
 }));
 
 export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
@@ -284,6 +301,7 @@ export const subscriptionsRelations = relations(subscriptions, ({ one, many }) =
   messageCards: many(messageCards),
   notifications: many(notifications),
   managedBuildLogs: many(managedBuildLogs),
+  analysisReports: many(analysisReports),
 }));
 
 export const managedBuildLogsRelations = relations(managedBuildLogs, ({ one }) => ({
@@ -406,6 +424,17 @@ export const smtpConfig = sqliteTable('smtp_config', {
     .$defaultFn(() => new Date())
     .notNull(),
 });
+
+export const analysisReportsRelations = relations(analysisReports, ({ one }) => ({
+  subscription: one(subscriptions, {
+    fields: [analysisReports.subscriptionId],
+    references: [subscriptions.id],
+  }),
+  user: one(users, {
+    fields: [analysisReports.userId],
+    references: [users.id],
+  }),
+}));
 
 export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
   user: one(users, {
