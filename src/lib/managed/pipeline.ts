@@ -773,6 +773,18 @@ export async function runManagedPipeline(
                     unverified: true,
                   });
                 } else {
+                  const failedSource: GeneratedSource = {
+                    title: source.title,
+                    url: source.url,
+                    description: source.description,
+                    script: result.script ?? '',
+                    cronExpression: '0 * * * *',
+                    initialItems: [],
+                    isEnabled: false,
+                    failedReason: result.error ?? '未知错误',
+                  };
+                  generatedSources.push(failedSource);
+                  updateWizardState(subscriptionId, { generatedSources: [...generatedSources] });
                   writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url, script: result.script });
                 }
               } catch (err) {
@@ -780,6 +792,18 @@ export async function runManagedPipeline(
                 if (isCancelled(subscriptionId)) return;
                 if (isAbortError(err)) return;
                 const msg = err instanceof Error ? err.message : String(err);
+                const failedSource: GeneratedSource = {
+                  title: source.title,
+                  url: source.url,
+                  description: source.description,
+                  script: '',
+                  cronExpression: '0 * * * *',
+                  initialItems: [],
+                  isEnabled: false,
+                  failedReason: msg,
+                };
+                generatedSources.push(failedSource);
+                updateWizardState(subscriptionId, { generatedSources: [...generatedSources] });
                 writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成出错：${msg}`, { sourceUrl: source.url });
               }
             })
@@ -823,7 +847,12 @@ export async function runManagedPipeline(
       .where(eq(subscriptions.id, subscriptionId))
       .run();
 
-    writeLog(subscriptionId, 'complete', 'success', `订阅创建完成，共 ${sourcesToCreate.length} 个数据源`);
+    const successCount = sourcesToCreate.filter((s) => !s.failedReason).length;
+    const failedCount = sourcesToCreate.length - successCount;
+    const parts = [];
+    if (successCount > 0) parts.push(`${successCount} 个成功`);
+    if (failedCount > 0) parts.push(`${failedCount} 个待修复`);
+    writeLog(subscriptionId, 'complete', 'success', `订阅创建完成，共 ${sourcesToCreate.length} 个数据源（${parts.join('，')}）`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[managed pipeline] Unexpected error:', err);
