@@ -298,9 +298,9 @@ export default function SubscriptionDetailPage() {
       )}
 
       {/* Back + header */}
-      <div className="flex items-start gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-4">
         {/* Back button: desktop only — mobile uses AppBar */}
-        <Button variant="ghost" size="icon" asChild className="hidden md:flex -ml-2 mt-0.5 flex-shrink-0">
+        <Button variant="ghost" size="icon" asChild className="hidden md:flex -ml-2 flex-shrink-0">
           <Link href="/subscriptions"><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
         <div className="flex-1 min-w-0">
