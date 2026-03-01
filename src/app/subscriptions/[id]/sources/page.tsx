@@ -46,6 +46,8 @@ export default function SourcesPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [retryStates, setRetryStates] = useState<Record<string, RetryInfo>>({});
   const prevRetryIdsRef = useRef<Set<string>>(new Set());
+  const [collectingIds, setCollectingIds] = useState<Set<string>>(new Set());
+  const pollNowRef = useRef<(() => void) | null>(null);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -80,8 +82,19 @@ export default function SourcesPage() {
         const data: Record<string, RetryInfo> = await res.json();
         setRetryStates(data);
 
+        // Clear local collectingIds once backend confirms collecting/retry state
+        const backendIds = new Set(Object.keys(data));
+        setCollectingIds((prev) => {
+          const next = new Set(prev);
+          // If backend tracks it, local flag is no longer needed
+          for (const cid of prev) {
+            if (backendIds.has(cid)) next.delete(cid);
+          }
+          return next.size === prev.size ? prev : next;
+        });
+
         // If a source was tracked before but no longer is, collection finished
-        const currentIds = new Set(Object.keys(data));
+        const currentIds = backendIds;
         const prevIds = prevRetryIdsRef.current;
         const finishedIds: string[] = [];
         for (const pid of prevIds) {
@@ -90,6 +103,13 @@ export default function SourcesPage() {
         prevRetryIdsRef.current = currentIds;
 
         if (finishedIds.length > 0) {
+          // Clear local collectingIds for finished sources
+          setCollectingIds((prev) => {
+            const next = new Set(prev);
+            for (const fid of finishedIds) next.delete(fid);
+            return next.size === prev.size ? prev : next;
+          });
+
           // Refetch sources to get updated stats
           const srcRes = await fetch(`/api/sources?subscriptionId=${id}`);
           if (srcRes.ok) {
@@ -112,9 +132,10 @@ export default function SourcesPage() {
       } catch { /* ignore */ }
     };
 
+    pollNowRef.current = poll;
     poll();
     const timer = setInterval(poll, 3000);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); pollNowRef.current = null; };
   }, [sources.length, id, fetchNotifs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dismissNotif = async (nid: string) => {
@@ -140,13 +161,20 @@ export default function SourcesPage() {
   };
 
   const handleTrigger = async (src: Source) => {
+    // Immediately show loading on the button
+    setCollectingIds((prev) => new Set(prev).add(src.id));
     try {
       const res = await fetch(`/api/sources/${src.id}/trigger`, { method: 'POST' });
       const d = await res.json();
-      if (d.error) { showToast(`触发失败: ${d.error}`, false); return; }
-      showToast('已触发采集');
-      // Collecting state will be picked up by retry-states polling
+      if (d.error) {
+        setCollectingIds((prev) => { const n = new Set(prev); n.delete(src.id); return n; });
+        showToast(`触发失败: ${d.error}`, false);
+        return;
+      }
+      // Trigger an immediate poll so backend collecting state is picked up fast
+      setTimeout(() => pollNowRef.current?.(), 500);
     } catch {
+      setCollectingIds((prev) => { const n = new Set(prev); n.delete(src.id); return n; });
       showToast('网络错误', false);
     }
   };
@@ -223,6 +251,7 @@ export default function SourcesPage() {
             {sources.map((src) => (
               <SourceCard key={src.id} src={src}
                 retryState={retryStates[src.id]}
+                isBusy={collectingIds.has(src.id) || !!retryStates[src.id]}
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
@@ -237,6 +266,7 @@ export default function SourcesPage() {
             {sources.map((src) => (
               <SourceAccordion key={src.id} src={src}
                 retryState={retryStates[src.id]}
+                isBusy={collectingIds.has(src.id) || !!retryStates[src.id]}
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
@@ -476,8 +506,8 @@ function RetryBanner({ retryState }: { retryState: RetryInfo }) {
 }
 
 /* ── Desktop Source Card ── */
-function SourceCard({ src, retryState, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
-  src: Source; retryState?: RetryInfo; onToggle: (v: boolean) => void;
+function SourceCard({ src, retryState, isBusy, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
+  src: Source; retryState?: RetryInfo; isBusy: boolean; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
   onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
@@ -552,8 +582,10 @@ function SourceCard({ src, retryState, onToggle, onTrigger, onCronChange, onTitl
 
       {/* Actions */}
       <div className="flex gap-2 pt-1 border-t">
-        <Button variant="outline" size="sm" className="gap-1 flex-1" onClick={onTrigger}>
-          <Play className="h-3.5 w-3.5" />立即采集
+        <Button variant="outline" size="sm" className="gap-1 flex-1" onClick={onTrigger} disabled={isBusy}>
+          {isBusy
+            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />采集中</>
+            : <><Play className="h-3.5 w-3.5" />立即采集</>}
         </Button>
         {(src.status === 'failed' || (src.status === 'pending' && !src.script)) && (
           <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
@@ -569,8 +601,8 @@ function SourceCard({ src, retryState, onToggle, onTrigger, onCronChange, onTitl
 }
 
 /* ── Mobile Accordion ── */
-function SourceAccordion({ src, retryState, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
-  src: Source; retryState?: RetryInfo; onToggle: (v: boolean) => void;
+function SourceAccordion({ src, retryState, isBusy, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
+  src: Source; retryState?: RetryInfo; isBusy: boolean; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
   onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
@@ -653,8 +685,10 @@ function SourceAccordion({ src, retryState, onToggle, onTrigger, onCronChange, o
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="gap-1 flex-1" onClick={onTrigger}>
-              <Play className="h-3.5 w-3.5" />立即采集
+            <Button variant="outline" size="sm" className="gap-1 flex-1" onClick={onTrigger} disabled={isBusy}>
+              {isBusy
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />采集中</>
+                : <><Play className="h-3.5 w-3.5" />立即采集</>}
             </Button>
             {(src.status === 'failed' || (src.status === 'pending' && !src.script)) && (
               <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
