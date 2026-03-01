@@ -261,23 +261,68 @@ export async function generateScriptAgent(
                 itemCount: result.itemCount ?? 0,
                 items: result.items?.slice(0, 3),
               });
+            } else if (llmCheck.fixedScript) {
+              // Quality review failed but provided a fixed script — validate it automatically
+              // instead of relying on the LLM to call validateScript again.
+              onProgress?.(`审查失败，正在自动验证修复脚本...`);
+              const fixResult = await validateScript(llmCheck.fixedScript);
+              if (fixResult.success && (fixResult.itemCount ?? 0) > 0) {
+                // Re-run LLM quality check on the fixed script
+                onProgress?.(`修复脚本沙箱通过（${fixResult.itemCount} 条），正在二次审查...`);
+                const fixLlmCheck = await validateScriptAgent(
+                  source,
+                  llmCheck.fixedScript,
+                  fixResult.items ?? [],
+                  iteration + 50,
+                  onLLMCall,
+                  userId
+                );
+                if (fixLlmCheck.valid) {
+                  lastScript = llmCheck.fixedScript;
+                  lastValidItems = fixResult.items;
+                  onProgress?.(`修复脚本审查通过，采集到 ${fixResult.itemCount ?? 0} 条内容`);
+                  resultContent = JSON.stringify({
+                    success: true,
+                    itemCount: fixResult.itemCount ?? 0,
+                    items: fixResult.items?.slice(0, 3),
+                  });
+                } else {
+                  // Fixed script also failed quality review — feed back to LLM
+                  onProgress?.(`修复脚本审查仍失败: ${fixLlmCheck.reason.slice(0, 80)}`);
+                  resultContent = JSON.stringify({
+                    success: false,
+                    itemCount: fixResult.itemCount ?? 0,
+                    sandboxPassed: true,
+                    error: `修复脚本质量审查仍失败：${fixLlmCheck.reason}`,
+                    ...(validateAttempts >= MAX_RETRIES
+                      ? { note: `已尝试 ${MAX_RETRIES} 次，请返回当前最佳脚本并结束。` }
+                      : {}),
+                  });
+                }
+              } else {
+                // Fixed script failed sandbox — feed back to LLM
+                onProgress?.(`修复脚本沙箱验证失败: ${(fixResult.error ?? '').slice(0, 80)}`);
+                resultContent = JSON.stringify({
+                  success: false,
+                  itemCount: fixResult.itemCount ?? 0,
+                  error: `修复脚本沙箱验证失败：${fixResult.error ?? '未采集到数据'}`,
+                  ...(validateAttempts >= MAX_RETRIES
+                    ? { note: `已尝试 ${MAX_RETRIES} 次，请返回当前最佳脚本并结束。` }
+                    : {}),
+                });
+              }
             } else {
-              // Layers 2/3 failed
+              // Layers 2/3 failed, no fixed script provided
               onProgress?.(`审查失败: ${llmCheck.reason.slice(0, 80)}`);
-              const feedback: Record<string, unknown> = {
+              resultContent = JSON.stringify({
                 success: false,
                 itemCount: result.itemCount ?? 0,
                 sandboxPassed: true,
                 error: `质量审查失败：${llmCheck.reason}`,
-              };
-              if (llmCheck.fixedScript) {
-                feedback.suggestedScript = llmCheck.fixedScript;
-                feedback.note =
-                  '已提供修复脚本（suggestedScript 字段），请调用 validateScript 验证该脚本';
-              } else if (validateAttempts >= MAX_RETRIES) {
-                feedback.note = `已尝试 ${MAX_RETRIES} 次，请返回当前最佳脚本并结束。`;
-              }
-              resultContent = JSON.stringify(feedback);
+                ...(validateAttempts >= MAX_RETRIES
+                  ? { note: `已尝试 ${MAX_RETRIES} 次，请返回当前最佳脚本并结束。` }
+                  : {}),
+              });
             }
           }
         } else {
