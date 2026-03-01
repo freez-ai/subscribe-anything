@@ -150,6 +150,25 @@ function isCancelled(subscriptionId: string): boolean {
   }
 }
 
+/**
+ * Check if the pipeline should automatically advance to the next phase.
+ * Only auto-advance in managed mode ('managed_creating').
+ * In manual mode ('manual_creating'), tasks run to completion but pipeline stops between phases.
+ */
+function shouldAutoAdvance(subscriptionId: string): boolean {
+  try {
+    const db = getDb();
+    const row = db
+      .select({ managedStatus: subscriptions.managedStatus })
+      .from(subscriptions)
+      .where(eq(subscriptions.id, subscriptionId))
+      .get();
+    return row?.managedStatus === 'managed_creating';
+  } catch {
+    return false;
+  }
+}
+
 // ── Exported step functions (no isCancelled checks — run to completion) ──────
 
 /**
@@ -523,6 +542,80 @@ function autoSelectSources(discovered: FoundSource[]): FoundSource[] {
   return [...recommended, ...notRecommended.slice(0, 5 - recommended.length)];
 }
 
+/**
+ * Read the latest generate_script result for a specific source from build logs.
+ * Returns the GeneratedSource if found, null otherwise.
+ */
+function getSourceResultFromLogs(subscriptionId: string, source: FoundSource): GeneratedSource | null {
+  try {
+    const db = getDb();
+    const logs = db
+      .select({ level: managedBuildLogs.level, payload: managedBuildLogs.payload })
+      .from(managedBuildLogs)
+      .where(
+        and(
+          eq(managedBuildLogs.subscriptionId, subscriptionId),
+          eq(managedBuildLogs.step, 'generate_script'),
+        )
+      )
+      .all();
+
+    // Find the latest success or error log for this source
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const log = logs[i];
+      if (!log.payload) continue;
+      try {
+        const p = JSON.parse(log.payload) as { sourceUrl?: string; script?: string; cronExpression?: string; initialItems?: unknown[]; unverified?: boolean };
+        if (p.sourceUrl !== source.url) continue;
+
+        if (log.level === 'success' && p.script) {
+          return {
+            title: source.title,
+            url: source.url,
+            description: source.description,
+            script: p.script,
+            cronExpression: p.cronExpression ?? '0 * * * *',
+            initialItems: (p.initialItems as GeneratedSource['initialItems']) ?? [],
+            isEnabled: true,
+          };
+        } else if (log.level === 'error') {
+          return {
+            title: source.title,
+            url: source.url,
+            description: source.description,
+            script: p.script ?? '',
+            cronExpression: '0 * * * *',
+            initialItems: [],
+            isEnabled: false,
+            failedReason: '生成失败',
+          };
+        }
+      } catch { /* ignore parse errors */ }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wait for an already-running source generation task to complete.
+ * Polls DB logs until a success or error log appears for the source.
+ */
+async function waitForSourceResult(
+  subscriptionId: string,
+  source: FoundSource,
+  maxWaitMs = 10 * 60 * 1000
+): Promise<GeneratedSource | null> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const result = getSourceResultFromLogs(subscriptionId, source);
+    if (result) return result;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return null;
+}
+
 export async function runManagedPipeline(
   subscriptionId: string,
   payload: ManagedPayload
@@ -672,6 +765,8 @@ export async function runManagedPipeline(
 
     // ── Phase 2: generate_scripts ─────────────────────────────────────────────
     if (startStep !== 'complete') {
+      // Between phases: check if we should auto-advance (only in managed mode)
+      if (startStep === 'find_sources' && !shouldAutoAdvance(subscriptionId)) return;
       if (isCancelled(subscriptionId)) return;
 
       // Clear old LLM calls from Phase 1 (find_sources has no sourceUrl, would clutter the store)
@@ -708,6 +803,27 @@ export async function runManagedPipeline(
           .map((source) =>
             limit(async () => {
               if (isCancelled(subscriptionId)) return;
+
+              const key = `${subscriptionId}:${source.url}`;
+
+              // Check if a task is already running for this source (from manual step)
+              if (sourceAbortControllers.has(key)) {
+                writeLog(subscriptionId, 'generate_script', 'info', `等待 "${source.title}" 已有任务完成...`, { sourceUrl: source.url });
+                const result = await waitForSourceResult(subscriptionId, source);
+                if (result) {
+                  generatedSources.push(result);
+                  updateWizardState(subscriptionId, { generatedSources: [...generatedSources] });
+                }
+                return;
+              }
+
+              // Check if already completed in DB logs (from a previous run)
+              const existingResult = getSourceResultFromLogs(subscriptionId, source);
+              if (existingResult) {
+                generatedSources.push(existingResult);
+                updateWizardState(subscriptionId, { generatedSources: [...generatedSources] });
+                return;
+              }
 
               const signal = registerSourceAbort(subscriptionId, source.url);
 
@@ -833,6 +949,8 @@ export async function runManagedPipeline(
     }
 
     // ── Phase 3: complete ─────────────────────────────────────────────────────
+    // Between phases: check if we should auto-advance (only in managed mode)
+    if (startStep !== 'complete' && !shouldAutoAdvance(subscriptionId)) return;
     if (isCancelled(subscriptionId)) return;
 
     const sourcesToCreate = generatedSources.length > 0 ? generatedSources : (initialGeneratedSources ?? []);

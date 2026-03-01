@@ -1,9 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { subscriptions, managedBuildLogs } from '@/lib/db/schema';
+import { subscriptions } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
-import { runManagedPipeline, abortAllSources } from '@/lib/managed/pipeline';
-import { clearLLMCalls } from '@/lib/managed/llmCallStore';
+import { runManagedPipeline } from '@/lib/managed/pipeline';
 import type { ManagedStartStep } from '@/lib/managed/pipeline';
 import type { FoundSource, GeneratedSource } from '@/types/wizard';
 
@@ -71,22 +70,8 @@ export async function POST(req: Request) {
         return Response.json({ error: 'Subscription not found or not in manual_creating state' }, { status: 400 });
       }
 
-      // Cancel any running source generation tasks (from run-step) before managed pipeline takes over
-      abortAllSources(existingSubscriptionId);
-
-      // Clear old LLM calls and generate_script logs so managed pipeline starts from a clean state.
-      // The managed pipeline uses initialGeneratedSources (passed from frontend) to skip
-      // already-completed sources, not the database logs.
-      clearLLMCalls(existingSubscriptionId);
-      db.delete(managedBuildLogs)
-        .where(
-          and(
-            eq(managedBuildLogs.subscriptionId, existingSubscriptionId),
-            eq(managedBuildLogs.step, 'generate_script')
-          )
-        )
-        .run();
-
+      // Only update status — don't abort running tasks or clear logs.
+      // The pipeline will wait for already-running tasks and skip completed ones.
       db.update(subscriptions)
         .set({
           managedStatus: 'managed_creating',
