@@ -304,16 +304,7 @@ export default function SubscriptionDetailPage() {
           <Link href="/subscriptions"><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-semibold truncate">{sub.topic}</h1>
-            {sub.unreadCount > 0 && (
-              <Badge className="bg-primary text-primary-foreground text-xs">{sub.unreadCount} 未读</Badge>
-            )}
-          </div>
-          {sub.criteria && (
-            <p className="text-sm text-muted-foreground mt-0.5 truncate">条件：{sub.criteria}</p>
-          )}
-          <p className="text-xs text-muted-foreground">共 {sub.totalCount} 条内容</p>
+          <h1 className="text-xl font-semibold truncate">{sub.topic}</h1>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <Switch checked={sub.isEnabled} onCheckedChange={handleToggleEnabled} />
@@ -355,7 +346,12 @@ export default function SubscriptionDetailPage() {
 
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-muted-foreground">{cards.length} 条已加载</span>
+        <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+          共 {sub.totalCount} 条内容
+          {sub.unreadCount > 0 && (
+            <Badge className="bg-primary text-primary-foreground text-xs">{sub.unreadCount} 未读</Badge>
+          )}
+        </span>
         {/* Layout toggle: desktop only */}
         <div className="hidden md:flex items-center gap-1">
           <Button variant={layout === 'masonry' ? 'secondary' : 'ghost'} size="icon" className="h-7 w-7"
