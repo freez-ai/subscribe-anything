@@ -5,9 +5,9 @@ import { requireAuth } from '@/lib/auth';
 import type { FoundSource } from '@/types/wizard';
 
 // POST /api/subscriptions/[id]/managed-takeover
-// Stops the managed pipeline (by switching status to manual_creating),
-// reads the current wizard state from wizardStateJson, and returns it
-// for the frontend to resume seamlessly in the wizard.
+// Switches status to manual_creating, reads the current wizard state from wizardStateJson,
+// and returns it for the frontend to resume seamlessly in the wizard.
+// Does NOT stop any running tasks — tasks continue and can be monitored via SSE.
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }

@@ -118,16 +118,9 @@ export default function WizardShell() {
       };
       setState(newState);
 
-      if (resumeStep === 3) {
-        // Restart generate_scripts for selected sources that haven't been processed yet
-        await fetch(`/api/subscriptions/${subscriptionId}/run-step`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 'generate_scripts', sources: selectedSources }),
-        });
-      }
-      // resumeStep === 2: find_sources still running or not started yet.
-      // Step2 will connect to SSE and pick up results when ready.
+      // Do NOT restart tasks on takeover — they may already be running in background.
+      // Step2/Step3 will connect to SSE and monitor progress.
+      // Only user actions (retry, etc.) should trigger new task starts.
 
       persistToDb({ ...newState });
     } catch { /* ignore */ }
