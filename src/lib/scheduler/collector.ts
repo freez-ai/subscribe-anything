@@ -33,6 +33,19 @@ export async function collect(sourceId: string): Promise<CollectResult> {
 
   markCollecting(sourceId);
 
+  try {
+    return await _doCollect(db, source, sourceId);
+  } finally {
+    clearCollecting(sourceId);
+  }
+}
+
+async function _doCollect(
+  db: ReturnType<typeof getDb>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source: any,
+  sourceId: string,
+): Promise<CollectResult> {
   const subscription = db
     .select()
     .from(subscriptions)
@@ -47,14 +60,12 @@ export async function collect(sourceId: string): Promise<CollectResult> {
     runResult = await runScript(source.script);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    clearCollecting(sourceId);
     _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: errorMsg };
   }
 
   if (!runResult.success) {
     const errorMsg = runResult.error ?? 'Script error';
-    clearCollecting(sourceId);
     _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: runResult.error };
   }
@@ -64,7 +75,6 @@ export async function collect(sourceId: string): Promise<CollectResult> {
   // ── Zero items = script broken (returns nothing useful) ─────────────────────
   if (items.length === 0) {
     const errorMsg = '脚本执行成功但未返回任何数据，请检查脚本逻辑或目标页面是否变更';
-    clearCollecting(sourceId);
     _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: errorMsg };
   }
@@ -135,7 +145,6 @@ export async function collect(sourceId: string): Promise<CollectResult> {
   }
 
   // ── Update source stats ───────────────────────────────────────────────────────
-  clearCollecting(sourceId);
   clearRetry(sourceId);
   const nextRun = nextCronDate(source.cronExpression);
   db.update(sources)
