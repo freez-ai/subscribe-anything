@@ -65,6 +65,12 @@ Everything runs in a single Node.js process. **`server.ts`** is the entrypoint �
 - Mobile-first: bottom tab bar (`BottomNav`), iOS safe area hooks (`useSafeArea`), swipe gesture support
 - Unread badge polls `/api/message-cards/unread-count` every 30 seconds (`useUnreadCount` hook)
 - Wizard flow (`/subscriptions/new`): 4 steps — Step1Topic → Step2FindSources (find-sources SSE + source selection) → Step3ScriptGen (generate-scripts SSE) → Step4Confirm
+- Managed mode ("帮我完成"): users can click "帮我完成" at any wizard step to hand off the remaining steps to AI in the background
+  - `src/lib/managed/pipeline.ts` — `runManagedPipeline()` runs 3 phases: find_sources → generate_scripts → complete
+  - `POST /api/subscriptions/managed` — creates a managed subscription; accepts `startStep` param (`find_sources` | `generate_scripts` | `complete`)
+  - `subscriptions.managedStatus` column tracks state: `null` (normal), `manual_creating`, `managed_creating`, `failed`
+  - `ManagedProgressDrawer` component polls `/api/subscriptions/{id}/managed-progress` every 2s to show real-time build logs
+  - Takeover: user can switch from managed back to manual mode via `/api/subscriptions/{id}/managed-takeover`, resuming the wizard at the current step
 
 ### Environment Variables
 

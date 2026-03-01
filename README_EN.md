@@ -29,6 +29,8 @@ Subscribe Anything is a self-hosted platform that lets you subscribe to *any* to
 3. **The AI writes a JavaScript collection script** for each source, validates it in a sandbox, and shows you a preview of collected items
 4. **Confirm** — your subscription is live. The scheduler runs your scripts on a cron schedule, deduplicates results, and pushes unread message cards to your inbox
 
+> **💡 One-Click Managed Mode:** At any wizard step, click "Do it for me" and the AI will automatically complete all remaining steps in the background. You can monitor real-time progress or take over and switch back to manual mode at any time.
+
 All API keys and AI provider configuration are stored inside the SQLite database (no environment variables needed beyond `DB_URL`). Everything runs in a single Node.js process.
 
 ---
@@ -38,6 +40,7 @@ All API keys and AI provider configuration are stored inside the SQLite database
 | Feature | Description |
 |---|---|
 | 🤖 AI Source Discovery | Four-step wizard uses an AI agent with web search to find the best data sources for any topic |
+| 🚀 One-Click Managed Mode | Click "Do it for me" at any wizard step — AI completes all remaining steps in the background with real-time progress and takeover support |
 | 📝 Auto Script Generation | AI generates, validates, and repairs JavaScript collection scripts that run in a secure V8 sandbox |
 | 📅 Cron Scheduling | Per-source cron schedules (`node-cron`), concurrent execution limited to 5 sandboxes via `p-limit` |
 | 📬 Message Center | Unified cross-subscription inbox with unread/read states, criteria-match highlights, and 30-second polling badge |
