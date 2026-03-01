@@ -274,8 +274,7 @@ export async function generateScriptAgent(
                 feedback.suggestedScript = llmCheck.fixedScript;
                 feedback.note =
                   '已提供修复脚本（suggestedScript 字段），请调用 validateScript 验证该脚本';
-              }
-              if (validateAttempts >= MAX_RETRIES) {
+              } else if (validateAttempts >= MAX_RETRIES) {
                 feedback.note = `已尝试 ${MAX_RETRIES} 次，请返回当前最佳脚本并结束。`;
               }
               resultContent = JSON.stringify(feedback);
