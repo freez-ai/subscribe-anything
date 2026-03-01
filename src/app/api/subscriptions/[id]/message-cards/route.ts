@@ -1,4 +1,4 @@
-import { eq, desc, and, inArray } from 'drizzle-orm';
+import { eq, desc, and, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { messageCards, sources, favorites, subscriptions } from '@/lib/db/schema';
 import { requireAuth } from '@/lib/auth';
@@ -18,6 +18,7 @@ export async function GET(
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') ?? '50', 10)));
     const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10));
     const sourceId = url.searchParams.get('sourceId') ?? undefined;
+    const readStatus = url.searchParams.get('readStatus') ?? undefined;
 
     const db = getDb();
 
@@ -54,6 +55,7 @@ export async function GET(
         eq(messageCards.subscriptionId, id),
         eq(sources.isEnabled, true),
         ...(sourceId ? [eq(messageCards.sourceId, sourceId)] : []),
+        ...(readStatus === 'unread' ? [isNull(messageCards.readAt)] : []),
       ))
       .orderBy(desc(messageCards.publishedAt))
       .limit(limit)

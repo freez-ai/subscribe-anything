@@ -56,6 +56,7 @@ export default function SubscriptionDetailPage() {
   const [pullDistance, setPullDistance] = useState(0);
   const [filterSources, setFilterSources] = useState<Source[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [unreadOnly, setUnreadOnly] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef(0);
@@ -94,6 +95,7 @@ export default function SubscriptionDetailPage() {
     try {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(currentOffset) });
       if (selectedSourceId) params.set('sourceId', selectedSourceId);
+      if (unreadOnly) params.set('readStatus', 'unread');
       const res = await fetch(`/api/subscriptions/${id}/message-cards?${params}`);
       if (!res.ok) return;
       const data = await res.json();
@@ -104,7 +106,7 @@ export default function SubscriptionDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, selectedSourceId]);
+  }, [id, selectedSourceId, unreadOnly]);
 
   useEffect(() => { loadMore(0, true); }, [loadMore]);
 
@@ -371,20 +373,31 @@ export default function SubscriptionDetailPage() {
       {filterSources.length > 1 && (
         <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 mb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
-            onClick={() => setSelectedSourceId(null)}
+            onClick={() => { setSelectedSourceId(null); setUnreadOnly(false); }}
             className={[
               'whitespace-nowrap flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors',
-              !selectedSourceId
+              !selectedSourceId && !unreadOnly
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground hover:text-foreground',
             ].join(' ')}
           >
             全部
           </button>
+          <button
+            onClick={() => { setSelectedSourceId(null); setUnreadOnly(true); }}
+            className={[
+              'whitespace-nowrap flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors',
+              unreadOnly && !selectedSourceId
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:text-foreground',
+            ].join(' ')}
+          >
+            未读
+          </button>
           {filterSources.map((s) => (
             <button
               key={s.id}
-              onClick={() => setSelectedSourceId(s.id === selectedSourceId ? null : s.id)}
+              onClick={() => { setSelectedSourceId(s.id === selectedSourceId ? null : s.id); setUnreadOnly(false); }}
               className={[
                 'whitespace-nowrap flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors',
                 selectedSourceId === s.id
