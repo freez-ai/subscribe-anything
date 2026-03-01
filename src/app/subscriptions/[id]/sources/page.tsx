@@ -84,40 +84,34 @@ export default function SourcesPage() {
         setRetryStates(data);
 
         const backendIds = new Set(Object.keys(data));
+        const finishedIds: string[] = [];
 
-        // Detect sources whose collection has finished:
         // 1) Was in backend last poll but now gone (retry/collecting ended)
         const prevIds = prevRetryIdsRef.current;
-        const finishedIds: string[] = [];
         for (const pid of prevIds) {
           if (!backendIds.has(pid)) finishedIds.push(pid);
         }
         prevRetryIdsRef.current = backendIds;
 
         // 2) Local collectingIds that backend has no record of:
+        //    Read directly from ref (not state) to avoid setState callback timing issues.
         //    If added >2s ago, collection must have finished before polling saw it.
-        //    The 2s grace period avoids clearing ids before the backend even receives the request.
-        const now = Date.now();
         const cMap = collectingMapRef.current;
-        setCollectingIds((prev) => {
-          if (prev.size === 0) return prev;
-          const next = new Set<string>();
-          for (const cid of prev) {
-            if (backendIds.has(cid)) {
-              // Backend is tracking it — done locally, backend will handle lifecycle
-            } else {
-              const addedAt = cMap.get(cid) ?? 0;
-              if (now - addedAt < 2000) {
-                next.add(cid); // too fresh, keep it
-              } else {
-                // Backend doesn't know about it and it's been >2s — collection already finished
-                cMap.delete(cid);
-                if (!finishedIds.includes(cid)) finishedIds.push(cid);
-              }
-            }
+        const now = Date.now();
+        const stillCollecting = new Set<string>();
+        for (const [cid, addedAt] of cMap) {
+          if (backendIds.has(cid)) {
+            // Backend is tracking it — remove from local map, backend lifecycle takes over
+            cMap.delete(cid);
+          } else if (now - addedAt >= 2000) {
+            // Grace period over, not in backend → finished
+            cMap.delete(cid);
+            if (!finishedIds.includes(cid)) finishedIds.push(cid);
+          } else {
+            stillCollecting.add(cid);
           }
-          return next;
-        });
+        }
+        setCollectingIds(stillCollecting);
 
         if (finishedIds.length > 0) {
           // Refetch sources to get updated stats
