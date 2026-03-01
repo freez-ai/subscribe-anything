@@ -20,7 +20,7 @@ export default function SettingsPage() {
             <TabsTrigger value="prompts">提示词模板</TabsTrigger>
             <TabsTrigger value="llm">AI 供应商</TabsTrigger>
             <TabsTrigger value="search">搜索供应商</TabsTrigger>
-            <TabsTrigger value="smtp">登录验证</TabsTrigger>
+            <TabsTrigger value="auth">用户服务</TabsTrigger>
           </TabsList>
           <TabsContent value="llm">
             <LLMProviderList />
@@ -31,7 +31,7 @@ export default function SettingsPage() {
           <TabsContent value="search">
             <SearchProviderForm />
           </TabsContent>
-          <TabsContent value="smtp">
+          <TabsContent value="auth">
             <SmtpConfigForm />
           </TabsContent>
         </Tabs>
