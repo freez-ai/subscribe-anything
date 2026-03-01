@@ -24,6 +24,8 @@ interface SmtpFormData {
   password: string;
   zeaburApiKey: string;
   resendApiKey: string;
+  aliyunDirectMailApiKey: string;
+  aliyunDirectMailRegion: string;
   fromEmail: string;
   fromName: string;
   requireVerification: boolean;
@@ -54,6 +56,8 @@ export default function SmtpConfigForm() {
     password: '',
     zeaburApiKey: '',
     resendApiKey: '',
+    aliyunDirectMailApiKey: '',
+    aliyunDirectMailRegion: 'cn-hangzhou',
     fromEmail: '',
     fromName: 'Subscribe Anything',
     requireVerification: true,
@@ -321,6 +325,13 @@ export default function SmtpConfigForm() {
               >
                 Resend
               </button>
+              <button
+                type="button"
+                className={`px-4 py-1.5 text-sm transition-colors border-l ${form.provider === 'aliyun' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                onClick={() => set('provider', 'aliyun')}
+              >
+                阿里云 DirectMail
+              </button>
             </div>
           </div>
 
@@ -445,9 +456,53 @@ export default function SmtpConfigForm() {
             </>
           )}
 
+          {form.provider === 'aliyun' && (
+            <>
+              <div className="rounded-md bg-muted px-4 py-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">阿里云 DirectMail 说明</p>
+                <p>阿里云 DirectMail 是阿里云提供的邮件推送服务，支持事务邮件、批量邮件等。需要在{' '}
+                  <a href="https://dm.console.aliyun.com/" target="_blank" rel="noopener noreferrer" className="underline">
+                    阿里云 DirectMail 控制台
+                  </a>
+                  {' '}开通服务并创建 API Key，同时需要配置发件人域名。</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="aliyun-api-key">阿里云 DirectMail API Key</Label>
+                <Input
+                  id="aliyun-api-key"
+                  type="password"
+                  value={form.aliyunDirectMailApiKey}
+                  onChange={e => set('aliyunDirectMailApiKey', e.target.value)}
+                  placeholder={
+                    form.configured && form.aliyunDirectMailApiKey === '••••••••'
+                      ? '不修改请留空'
+                      : 'LTAI...'
+                  }
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="aliyun-region">区域</Label>
+                <select
+                  id="aliyun-region"
+                  value={form.aliyunDirectMailRegion}
+                  onChange={e => set('aliyunDirectMailRegion', e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md"
+                >
+                  <option value="cn-hangzhou">杭州 (cn-hangzhou)</option>
+                  <option value="cn-beijing">北京 (cn-beijing)</option>
+                  <option value="cn-shenzhen">深圳 (cn-shenzhen)</option>
+                  <option value="ap-southeast-1">新加坡 (ap-southeast-1)</option>
+                  <option value="ap-southeast-2">悉尼 (ap-southeast-2)</option>
+                  <option value="us-west-1">弗吉尼亚 (us-west-1)</option>
+                </select>
+              </div>
+            </>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="smtp-from-email">
-              发件人邮箱{(form.provider === 'zeabur' || form.provider === 'resend') ? '' : '（可选）'}
+              发件人邮箱{(form.provider === 'zeabur' || form.provider === 'resend' || form.provider === 'aliyun') ? '' : '（可选）'}
             </Label>
             <Input
               id="smtp-from-email"
@@ -458,7 +513,9 @@ export default function SmtpConfigForm() {
                   ? '必须为已验证域名下的邮箱'
                   : form.provider === 'resend'
                     ? '必填，如 onboarding@resend.dev'
-                    : '留空则使用用户名'
+                    : form.provider === 'aliyun'
+                      ? '必填，已配置的发件人域名'
+                      : '留空则使用用户名'
               }
               autoComplete="off"
             />

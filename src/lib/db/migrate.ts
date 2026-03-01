@@ -607,6 +607,8 @@ function migrateEmailVerification(sqlite: InstanceType<typeof Database>) {
   try { sqlite.exec("ALTER TABLE smtp_config ADD COLUMN provider TEXT NOT NULL DEFAULT 'smtp'"); } catch { /* already exists */ }
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN zeabur_api_key TEXT'); } catch { /* already exists */ }
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN resend_api_key TEXT'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN aliyun_directmail_api_key TEXT'); } catch { /* already exists */ }
+  try { sqlite.exec("ALTER TABLE smtp_config ADD COLUMN aliyun_directmail_region TEXT NOT NULL DEFAULT 'cn-hangzhou'"); } catch { /* already exists */ }
 
   console.log('[DB] Email verification system migration complete');
 }

@@ -396,9 +396,11 @@ export const smtpConfig = sqliteTable('smtp_config', {
   fromEmail: text('from_email'), // 发件人地址
   fromName: text('from_name').default('Subscribe Anything'),
   requireVerification: integer('require_verification', { mode: 'boolean' }).notNull().default(true), // 注册是否需要邮箱验证码
-  provider: text('provider').notNull().default('smtp'), // 'smtp' | 'zeabur' | 'resend'
+  provider: text('provider').notNull().default('smtp'), // 'smtp' | 'zeabur' | 'resend' | 'aliyun'
   zeaburApiKey: text('zeabur_api_key'), // Zeabur Email API Key
   resendApiKey: text('resend_api_key'), // Resend API Key
+  aliyunDirectMailApiKey: text('aliyun_directmail_api_key'), // 阿里云 DirectMail API Key
+  aliyunDirectMailRegion: text('aliyun_directmail_region').default('cn-hangzhou'), // 阿里云 DirectMail 区域
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),

@@ -13,9 +13,11 @@ export interface SmtpConfigData {
   fromEmail?: string | null;
   fromName?: string | null;
   requireVerification: boolean;
-  provider: string; // 'smtp' | 'zeabur' | 'resend'
+  provider: string; // 'smtp' | 'zeabur' | 'resend' | 'aliyun'
   zeaburApiKey?: string | null;
   resendApiKey?: string | null;
+  aliyunDirectMailApiKey?: string | null;
+  aliyunDirectMailRegion?: string | null;
 }
 
 export interface SendEmailOptions {
@@ -48,6 +50,8 @@ export function getSmtpConfig(): SmtpConfigData | null {
     provider: config.provider ?? 'smtp',
     zeaburApiKey: config.zeaburApiKey,
     resendApiKey: config.resendApiKey,
+    aliyunDirectMailApiKey: config.aliyunDirectMailApiKey,
+    aliyunDirectMailRegion: config.aliyunDirectMailRegion ?? 'cn-hangzhou',
   };
 }
 
@@ -62,6 +66,9 @@ export function isSmtpConfigured(): boolean {
   }
   if (config.provider === 'resend') {
     return !!(config.resendApiKey && config.fromEmail);
+  }
+  if (config.provider === 'aliyun') {
+    return !!(config.aliyunDirectMailApiKey && config.fromEmail);
   }
   return !!(config.host && config.user && config.password);
 }
@@ -157,7 +164,65 @@ async function sendEmailViaResend(
 }
 
 /**
- * Send email using configured provider (SMTP, Zeabur Email, or Resend)
+ * Send email via Aliyun DirectMail API
+ */
+async function sendEmailViaAliyunDirectMail(
+  config: SmtpConfigData,
+  { to, subject, html, text }: SendEmailOptions
+): Promise<{ success: boolean; error?: string }> {
+  const region = config.aliyunDirectMailRegion || 'cn-hangzhou';
+  const endpoint = `https://dm.${region}.aliyuncs.com`;
+
+  const fromEmail = config.fromEmail || 'noreply@example.com';
+  const fromName = config.fromName || 'Subscribe Anything';
+
+  // Generate signature using Aliyun signature algorithm
+  const accountName = 'postmaster@' + fromEmail.split('@')[1];
+  const now = new Date();
+  const dateStr = now.toUTCString();
+  const nonce = Math.random().toString(36).substring(2);
+
+  // Build request body
+  const body = {
+    AccountName: accountName,
+    AddressType: 1,
+    ReplyToAddress: false,
+    ToAddress: to,
+    FromAlias: fromName,
+    Subject: subject,
+    HtmlBody: html,
+    TextBody: text,
+  };
+
+  const bodyStr = JSON.stringify(body);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-mns-version': '2015-11-23',
+        'Date': dateStr,
+      },
+      body: bodyStr,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const msg = errorBody?.Message || errorBody?.message || response.statusText;
+      return { success: false, error: `Aliyun DirectMail error ${response.status}: ${msg}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('[Aliyun DirectMail] Send error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Send email using configured provider (SMTP, Zeabur Email, Resend, or Aliyun DirectMail)
  */
 export async function sendEmail({ to, subject, html, text }: SendEmailOptions): Promise<{ success: boolean; error?: string }> {
   const config = getSmtpConfig();
@@ -172,6 +237,10 @@ export async function sendEmail({ to, subject, html, text }: SendEmailOptions): 
 
   if (config.provider === 'resend') {
     return sendEmailViaResend(config, { to, subject, html, text });
+  }
+
+  if (config.provider === 'aliyun') {
+    return sendEmailViaAliyunDirectMail(config, { to, subject, html, text });
   }
 
   const transporter = createTransporter(config);
