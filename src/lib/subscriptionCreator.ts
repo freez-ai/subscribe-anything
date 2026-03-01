@@ -65,19 +65,21 @@ export async function createSourcesForSubscription(
 
     // Skip message cards, stats, and scheduling for failed sources
     if (isFailed) {
-      // Write notification for failed source
-      db.insert(notifications)
-        .values({
-          type: 'source_failed',
-          title: `订阅源待修复：${source.title}`,
-          body: srcInput.failedReason,
-          isRead: false,
-          subscriptionId,
-          relatedEntityType: 'source',
-          relatedEntityId: source.id,
-          createdAt: now,
-        })
-        .run();
+      // Only notify for genuinely failed sources, not ones that were never generated
+      if (srcInput.failedReason !== '未生成') {
+        db.insert(notifications)
+          .values({
+            type: 'source_failed',
+            title: `订阅源待修复：${source.title}`,
+            body: srcInput.failedReason,
+            isRead: false,
+            subscriptionId,
+            relatedEntityType: 'source',
+            relatedEntityId: source.id,
+            createdAt: now,
+          })
+          .run();
+      }
       continue;
     }
 

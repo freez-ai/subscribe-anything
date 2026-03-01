@@ -765,7 +765,7 @@ function AnalyzeDialog({
           {isIdle && (
             <div className="flex flex-col gap-4">
               <div>
-                <label className="text-sm font-medium block mb-1.5">分析要求</label>
+                <label className="text-sm font-medium block mb-1.5">分析要求（可选）</label>
                 <textarea
                   className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                   rows={3}
