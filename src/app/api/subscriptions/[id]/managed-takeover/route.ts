@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/auth';
 import type { FoundSource } from '@/types/wizard';
 
 // POST /api/subscriptions/[id]/managed-takeover
-// Switches status to manual_creating, reads the current wizard state from wizardStateJson,
+// Switches status to manual_creating, reads current wizard state from wizardStateJson,
 // and returns it for the frontend to resume seamlessly in the wizard.
 // Does NOT stop any running tasks — tasks continue and can be monitored via SSE.
 export async function POST(
@@ -47,8 +47,6 @@ export async function POST(
       // If pipeline reached step 3+ (sources found), resume at step 3
       resumeStep = wizardState.step >= 3 ? 3 : 2;
     }
-    // If wizardState is null or has no step, pipeline just started —
-    // return step 2 with empty data; Step2 will connect to SSE and wait.
 
     // Build wizard state to persist
     const newWizardState = {

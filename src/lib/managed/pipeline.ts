@@ -142,7 +142,9 @@ function isCancelled(subscriptionId: string): boolean {
       .from(subscriptions)
       .where(eq(subscriptions.id, subscriptionId))
       .get();
-    return !row || row.managedStatus !== 'managed_creating';
+    // Allow both 'managed_creating' and 'manual_creating' to continue.
+    // Only cancel when: null (complete), 'failed', or subscription deleted.
+    return !row || row.managedStatus === null || row.managedStatus === 'failed';
   } catch {
     return true;
   }
