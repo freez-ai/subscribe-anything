@@ -55,6 +55,13 @@ export async function collect(sourceId: string): Promise<CollectResult> {
 
   const items = runResult.items ?? [];
 
+  // ── Zero items = script broken (returns nothing useful) ─────────────────────
+  if (items.length === 0) {
+    const errorMsg = '脚本执行成功但未返回任何数据，请检查脚本逻辑或目标页面是否变更';
+    _markFailed(db, source, subscription, errorMsg, now);
+    return { newItems: 0, skipped: 0, error: errorMsg };
+  }
+
   // ── Dedup + persist ───────────────────────────────────────────────────────────
   let newItems = 0;
   let skipped = 0;
