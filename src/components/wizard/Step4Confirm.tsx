@@ -225,10 +225,12 @@ export default function Step4Confirm({
                         {isFailed ? (
                           <Badge
                             variant="outline"
-                            className="text-destructive border-destructive/50 bg-destructive/10 text-xs"
+                            className={source.failedReason === '未生成'
+                              ? 'text-muted-foreground border-muted-foreground/50 bg-muted/50 text-xs'
+                              : 'text-destructive border-destructive/50 bg-destructive/10 text-xs'}
                           >
                             <XCircle className="h-3 w-3 mr-1" />
-                            生成失败
+                            {source.failedReason === '未生成' ? '未生成' : '生成失败'}
                           </Badge>
                         ) : (
                           <Badge
@@ -248,7 +250,7 @@ export default function Step4Confirm({
                       >
                         {source.url}
                       </a>
-                      {isFailed && (
+                      {isFailed && source.failedReason !== '未生成' && (
                         <p className="text-xs text-destructive mt-1 break-words">{source.failedReason}</p>
                       )}
                     </div>

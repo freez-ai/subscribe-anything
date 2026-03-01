@@ -264,6 +264,17 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         isEnabled: false,
         failedReason: s.error,
       });
+    } else if (s?.status === 'skipped') {
+      acc.push({
+        title: source.title,
+        url: source.url,
+        description: source.description,
+        script: '',
+        cronExpression: '0 * * * *',
+        initialItems: [],
+        isEnabled: false,
+        failedReason: '未生成',
+      });
     }
     return acc;
   }, []);
