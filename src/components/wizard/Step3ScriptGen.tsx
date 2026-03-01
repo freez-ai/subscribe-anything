@@ -632,6 +632,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
             sourceTitle={source.title}
             calls={calls}
             totalTokens={totalTokens}
+            model={calls[0]?.model}
             onClose={() => setLLMLogOpenFor(null)}
           />
         );

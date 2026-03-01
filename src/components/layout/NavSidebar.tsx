@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { BookOpen, Github, Heart, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserMenu } from './UserMenu';
+import { ThemeToggle } from './ThemeToggle';
 
 interface NavSidebarProps {
   className?: string;
@@ -54,6 +55,7 @@ export function NavSidebar({ className }: NavSidebarProps) {
       </nav>
 
       <div className="border-t p-3 space-y-1">
+        <ThemeToggle variant="sidebar" />
         <UserMenu />
         <a
           href="https://github.com/freez-ai/subscribe-anything"

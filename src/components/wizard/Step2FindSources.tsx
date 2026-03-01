@@ -485,6 +485,7 @@ export default function Step2FindSources({
           sourceTitle={`发现数据源 — ${state.topic}`}
           calls={llmCalls}
           totalTokens={llmCalls.reduce((sum, c) => sum + (c.usage?.total ?? 0), 0)}
+          model={llmCalls[0]?.model}
           onClose={() => setShowLLMLog(false)}
         />
       )}

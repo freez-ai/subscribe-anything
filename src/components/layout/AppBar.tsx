@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { Github } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserMenu } from './UserMenu';
+import { ThemeToggle } from './ThemeToggle';
 
 interface AppBarProps {
   className?: string;
@@ -22,6 +23,7 @@ export function AppBar({ className }: AppBarProps) {
         <span className="text-base font-semibold">订阅万物</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
+        <ThemeToggle />
         <a
           href="https://github.com/freez-ai/subscribe-anything"
           target="_blank"

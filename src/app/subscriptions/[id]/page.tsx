@@ -860,6 +860,7 @@ function AnalyzeDialog({
           sourceTitle="数据分析"
           calls={llmCalls}
           totalTokens={totalTokens}
+          model={llmCalls[0]?.model}
           onClose={() => setShowLog(false)}
         />
       )}

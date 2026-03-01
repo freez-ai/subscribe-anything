@@ -912,6 +912,7 @@ function RepairDialog({ source, onClose, showToast }: {
           sourceTitle={source.title}
           calls={llmCalls}
           totalTokens={totalTokens}
+          model={llmCalls[0]?.model}
           onClose={() => setShowLog(false)}
         />
       )}

@@ -8,6 +8,8 @@ interface LLMLogDialogProps {
   sourceTitle: string;
   calls: LLMCallInfo[];
   totalTokens: number;
+  /** Optional model ID to display in header; if not provided, inferred from first call */
+  model?: string;
   onClose: () => void;
 }
 
@@ -177,9 +179,12 @@ export default function LLMLogDialog({
   sourceTitle,
   calls,
   totalTokens,
+  model,
   onClose,
 }: LLMLogDialogProps) {
   const isAnyStreaming = calls.some((c) => c.streaming);
+  // Infer model from first call if not provided
+  const displayModel = model ?? calls[0]?.model;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 bg-black/50">
@@ -199,6 +204,11 @@ export default function LLMLogDialog({
             </div>
             <p className="text-xs text-muted-foreground truncate">
               {sourceTitle}
+              {displayModel && (
+                <span className="text-muted-foreground/70">
+                  {' '}· {displayModel}
+                </span>
+              )}
               {totalTokens > 0 && (
                 <span className="text-muted-foreground/60">
                   {' '}· {totalTokens.toLocaleString()} tokens
