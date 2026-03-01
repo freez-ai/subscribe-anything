@@ -134,8 +134,8 @@ export default function SubscriptionDetailPage() {
         const res = await fetch(`/api/sources?subscriptionId=${id}`);
         if (!res.ok) return;
         const data = await res.json();
-        const sources: Array<{ id: string; isEnabled: boolean }> = Array.isArray(data) ? data : (data.data ?? []);
-        const enabled = sources.filter((s) => s.isEnabled);
+        const sources: Array<{ id: string; isEnabled: boolean; status: string }> = Array.isArray(data) ? data : (data.data ?? []);
+        const enabled = sources.filter((s) => s.isEnabled && s.status !== 'failed');
         if (enabled.length === 0) return;
         await Promise.all(
           enabled.map((s) => fetch(`/api/sources/${s.id}/trigger`, { method: 'POST' }))
