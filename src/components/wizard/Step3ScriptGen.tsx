@@ -240,6 +240,34 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
     return acc;
   }, []);
 
+  // All selected sources (success + failed) for Step4
+  const allResultSources = allSources.reduce<GeneratedSource[]>((acc, source, globalIdx) => {
+    const s = sourceStatuses[globalIdx];
+    if (s?.status === 'success') {
+      acc.push({
+        title: source.title,
+        url: source.url,
+        description: source.description,
+        script: s.script,
+        cronExpression: s.cronExpression,
+        initialItems: s.items,
+        isEnabled: true,
+      });
+    } else if (s?.status === 'failed') {
+      acc.push({
+        title: source.title,
+        url: source.url,
+        description: source.description,
+        script: '',
+        cronExpression: '0 * * * *',
+        initialItems: [],
+        isEnabled: false,
+        failedReason: s.error,
+      });
+    }
+    return acc;
+  }, []);
+
   const hasSuccess = successSources.length > 0;
 
   const handleRetrySource = async (globalIdx: number) => {
@@ -310,7 +338,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
   };
 
   const handleNext = () => {
-    onStateChange({ generatedSources: successSources });
+    onStateChange({ generatedSources: allResultSources });
     onNext();
   };
 

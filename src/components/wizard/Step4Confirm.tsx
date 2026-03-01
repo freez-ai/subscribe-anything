@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Eye, Loader2, Trash2 } from 'lucide-react';
+import { Eye, Loader2, Trash2, XCircle } from 'lucide-react';
 import { CRON_PRESETS } from '@/lib/utils/cron';
 import { ItemPreviewDialog } from '@/components/wizard/ItemPreviewDialog';
 import type { GeneratedSource, WizardState } from '@/types/wizard';
@@ -101,15 +101,17 @@ export default function Step4Confirm({
     setIsSubmitting(true);
     setErrorMessage('');
 
-    const sourcesPayload = sources.map((s) => ({
-      title: s.title,
-      url: s.url,
-      description: s.description,
-      script: s.script,
-      cronExpression: s.cronExpression,
-      isEnabled: s.isEnabled,
-      initialItems: s.initialItems,
-    }));
+    const sourcesPayload = sources
+      .filter((s) => !s.failedReason)
+      .map((s) => ({
+        title: s.title,
+        url: s.url,
+        description: s.description,
+        script: s.script,
+        cronExpression: s.cronExpression,
+        isEnabled: s.isEnabled,
+        initialItems: s.initialItems,
+      }));
 
     try {
       let createdId: string;
@@ -187,18 +189,19 @@ export default function Step4Confirm({
       <ScrollArea className="h-[48vh] md:h-[45vh]">
         <div className="flex flex-col gap-3 pr-2">
           {sources.map((source, idx) => {
+            const isFailed = !!source.failedReason;
             const selectValue = getCronSelectValue(idx, source.cronExpression);
             const isCustom = selectValue === CUSTOM_VALUE;
             const customValue = customCrons[idx] ?? source.cronExpression;
 
             return (
-              <Card key={idx}>
+              <Card key={idx} className={isFailed ? 'opacity-60' : undefined}>
                 <CardContent className="p-4 flex flex-col gap-3">
                   {/* Header row */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {editingTitleIdx === idx ? (
+                        {editingTitleIdx === idx && !isFailed ? (
                           <Input
                             autoFocus
                             className="h-7 text-sm font-semibold px-1 py-0 w-auto min-w-0 flex-1"
@@ -212,19 +215,29 @@ export default function Step4Confirm({
                           />
                         ) : (
                           <span
-                            className="font-semibold text-sm cursor-pointer hover:underline underline-offset-2"
-                            onClick={() => startEditTitle(idx)}
-                            title="点击编辑名称"
+                            className={`font-semibold text-sm${isFailed ? '' : ' cursor-pointer hover:underline underline-offset-2'}`}
+                            onClick={isFailed ? undefined : () => startEditTitle(idx)}
+                            title={isFailed ? undefined : '点击编辑名称'}
                           >
                             {source.title}
                           </span>
                         )}
-                        <Badge
-                          variant="outline"
-                          className="text-green-600 border-green-500/50 bg-green-500/10 text-xs"
-                        >
-                          已验证
-                        </Badge>
+                        {isFailed ? (
+                          <Badge
+                            variant="outline"
+                            className="text-destructive border-destructive/50 bg-destructive/10 text-xs"
+                          >
+                            <XCircle className="h-3 w-3 mr-1" />
+                            生成失败
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-green-600 border-green-500/50 bg-green-500/10 text-xs"
+                          >
+                            已验证
+                          </Badge>
+                        )}
                       </div>
                       <a
                         href={source.url}
@@ -235,6 +248,9 @@ export default function Step4Confirm({
                       >
                         {source.url}
                       </a>
+                      {isFailed && (
+                        <p className="text-xs text-destructive mt-1 break-words">{source.failedReason}</p>
+                      )}
                     </div>
                     {/* Enable/disable switch */}
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -243,7 +259,8 @@ export default function Step4Confirm({
                       </span>
                       <Switch
                         checked={source.isEnabled}
-                        onCheckedChange={(checked) => updateSource(idx, { isEnabled: checked })}
+                        onCheckedChange={isFailed ? undefined : (checked) => updateSource(idx, { isEnabled: checked })}
+                        disabled={isFailed}
                       />
                       <button
                         onClick={() => deleteSource(idx)}
@@ -255,52 +272,57 @@ export default function Step4Confirm({
                     </div>
                   </div>
 
-                  {/* Item count + preview */}
-                  {source.initialItems.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs text-muted-foreground">
-                        已采集 {source.initialItems.length} 条初始内容
-                      </p>
-                      <button
-                        onClick={() => setPreviewSource(source)}
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline underline-offset-2"
-                      >
-                        <Eye className="h-3 w-3" />
-                        预览
-                      </button>
-                    </div>
-                  )}
+                  {/* Failed sources don't show item count or cron selector */}
+                  {!isFailed && (
+                    <>
+                      {/* Item count + preview */}
+                      {source.initialItems.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            已采集 {source.initialItems.length} 条初始内容
+                          </p>
+                          <button
+                            onClick={() => setPreviewSource(source)}
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline underline-offset-2"
+                          >
+                            <Eye className="h-3 w-3" />
+                            预览
+                          </button>
+                        </div>
+                      )}
 
-                  {/* Cron selector */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">采集频率</label>
-                    <Select value={selectValue} onValueChange={(v) => handleCronSelectChange(idx, v)}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CRON_PRESETS.map((preset) => (
-                          <SelectItem key={preset.value} value={preset.value} className="text-xs">
-                            {preset.label}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={CUSTOM_VALUE} className="text-xs">
-                          自定义 Cron 表达式
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {isCustom && (
-                      <Input
-                        className="h-8 text-xs font-mono"
-                        placeholder="0 * * * *"
-                        value={customValue}
-                        onChange={(e) => handleCustomCronChange(idx, e.target.value)}
-                      />
-                    )}
-                    {!isCustom && (
-                      <p className="text-xs text-muted-foreground font-mono">{source.cronExpression}</p>
-                    )}
-                  </div>
+                      {/* Cron selector */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">采集频率</label>
+                        <Select value={selectValue} onValueChange={(v) => handleCronSelectChange(idx, v)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CRON_PRESETS.map((preset) => (
+                              <SelectItem key={preset.value} value={preset.value} className="text-xs">
+                                {preset.label}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value={CUSTOM_VALUE} className="text-xs">
+                              自定义 Cron 表达式
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isCustom && (
+                          <Input
+                            className="h-8 text-xs font-mono"
+                            placeholder="0 * * * *"
+                            value={customValue}
+                            onChange={(e) => handleCustomCronChange(idx, e.target.value)}
+                          />
+                        )}
+                        {!isCustom && (
+                          <p className="text-xs text-muted-foreground font-mono">{source.cronExpression}</p>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -319,7 +341,7 @@ export default function Step4Confirm({
         <div className="flex gap-3">
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || sources.length === 0}
+            disabled={isSubmitting || sources.filter((s) => !s.failedReason).length === 0}
             className="flex-1 md:flex-none"
           >
             {isSubmitting ? (

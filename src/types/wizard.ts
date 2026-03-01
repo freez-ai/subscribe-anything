@@ -18,6 +18,8 @@ export interface GeneratedSource {
   cronExpression: string;
   initialItems: CollectedItem[];
   isEnabled: boolean;
+  /** If set, this source failed script generation and cannot be enabled */
+  failedReason?: string;
 }
 
 export interface WizardState {
