@@ -16,7 +16,8 @@ export interface SmtpConfigData {
   provider: string; // 'smtp' | 'zeabur' | 'resend' | 'aliyun'
   zeaburApiKey?: string | null;
   resendApiKey?: string | null;
-  aliyunDirectMailApiKey?: string | null;
+  aliyunDirectMailAccessKeyId?: string | null;
+  aliyunDirectMailAccessKeySecret?: string | null;
   aliyunDirectMailRegion?: string | null;
 }
 
@@ -50,7 +51,8 @@ export function getSmtpConfig(): SmtpConfigData | null {
     provider: config.provider ?? 'smtp',
     zeaburApiKey: config.zeaburApiKey,
     resendApiKey: config.resendApiKey,
-    aliyunDirectMailApiKey: config.aliyunDirectMailApiKey,
+    aliyunDirectMailAccessKeyId: (config as any).aliyunDirectMailAccessKeyId,
+    aliyunDirectMailAccessKeySecret: (config as any).aliyunDirectMailAccessKeySecret,
     aliyunDirectMailRegion: config.aliyunDirectMailRegion ?? 'cn-hangzhou',
   };
 }
@@ -68,7 +70,7 @@ export function isSmtpConfigured(): boolean {
     return !!(config.resendApiKey && config.fromEmail);
   }
   if (config.provider === 'aliyun') {
-    return !!(config.aliyunDirectMailApiKey && config.fromEmail);
+    return !!(config.aliyunDirectMailAccessKeyId && config.aliyunDirectMailAccessKeySecret && config.fromEmail);
   }
   return !!(config.host && config.user && config.password);
 }
@@ -173,18 +175,12 @@ async function sendEmailViaAliyunDirectMail(
   const fromEmail = config.fromEmail || 'noreply@example.com';
   const fromName = config.fromName || 'Subscribe Anything';
 
-  // Parse API key: format should be "accessKeyId:accessKeySecret"
-  const apiKey = config.aliyunDirectMailApiKey;
-  if (!apiKey) {
-    return { success: false, error: 'Aliyun DirectMail API key is required' };
-  }
+  const accessKeyId = config.aliyunDirectMailAccessKeyId;
+  const accessKeySecret = config.aliyunDirectMailAccessKeySecret;
 
-  const keyParts = apiKey.split(':');
-  if (keyParts.length !== 2) {
-    return { success: false, error: 'Aliyun DirectMail API key format should be "accessKeyId:accessKeySecret"' };
+  if (!accessKeyId || !accessKeySecret) {
+    return { success: false, error: 'Aliyun DirectMail AccessKey ID and Secret are required' };
   }
-
-  const [accessKeyId, accessKeySecret] = keyParts;
 
   try {
     // Dynamically import Aliyun SDK

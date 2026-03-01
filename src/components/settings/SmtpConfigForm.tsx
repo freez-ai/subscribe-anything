@@ -24,7 +24,8 @@ interface SmtpFormData {
   password: string;
   zeaburApiKey: string;
   resendApiKey: string;
-  aliyunDirectMailApiKey: string;
+  aliyunDirectMailAccessKeyId: string;
+  aliyunDirectMailAccessKeySecret: string;
   aliyunDirectMailRegion: string;
   fromEmail: string;
   fromName: string;
@@ -56,7 +57,8 @@ export default function SmtpConfigForm() {
     password: '',
     zeaburApiKey: '',
     resendApiKey: '',
-    aliyunDirectMailApiKey: '',
+    aliyunDirectMailAccessKeyId: '',
+    aliyunDirectMailAccessKeySecret: '',
     aliyunDirectMailRegion: 'cn-hangzhou',
     fromEmail: '',
     fromName: 'Subscribe Anything',
@@ -465,23 +467,33 @@ export default function SmtpConfigForm() {
                     阿里云 DirectMail 控制台
                   </a>
                   {' '}开通服务并创建 AccessKey，同时需要配置发件人域名。</p>
-                <p className="font-mono bg-background px-2 py-1 rounded mt-2">API Key 格式：AccessKeyId:AccessKeySecret</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="aliyun-api-key">阿里云 DirectMail API Key</Label>
+                <Label htmlFor="aliyun-access-key-id">AccessKey ID</Label>
                 <Input
-                  id="aliyun-api-key"
+                  id="aliyun-access-key-id"
+                  type="text"
+                  value={form.aliyunDirectMailAccessKeyId}
+                  onChange={e => set('aliyunDirectMailAccessKeyId', e.target.value)}
+                  placeholder="LTAIxxxxxx"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">以 LTAI 开头的 AccessKey ID</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="aliyun-access-key-secret">AccessKey Secret</Label>
+                <Input
+                  id="aliyun-access-key-secret"
                   type="password"
-                  value={form.aliyunDirectMailApiKey}
-                  onChange={e => set('aliyunDirectMailApiKey', e.target.value)}
+                  value={form.aliyunDirectMailAccessKeySecret}
+                  onChange={e => set('aliyunDirectMailAccessKeySecret', e.target.value)}
                   placeholder={
-                    form.configured && form.aliyunDirectMailApiKey === '••••••••'
+                    form.configured && form.aliyunDirectMailAccessKeySecret === '••••••••'
                       ? '不修改请留空'
-                      : 'LTAIxxxxxx:xxxxxxxxxxxx'
+                      : '输入 AccessKey Secret'
                   }
                   autoComplete="new-password"
                 />
-                <p className="text-xs text-muted-foreground">格式：AccessKeyId:AccessKeySecret</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="aliyun-region">区域</Label>

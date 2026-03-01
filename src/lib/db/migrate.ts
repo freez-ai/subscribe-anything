@@ -609,6 +609,24 @@ function migrateEmailVerification(sqlite: InstanceType<typeof Database>) {
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN resend_api_key TEXT'); } catch { /* already exists */ }
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN aliyun_directmail_api_key TEXT'); } catch { /* already exists */ }
   try { sqlite.exec("ALTER TABLE smtp_config ADD COLUMN aliyun_directmail_region TEXT NOT NULL DEFAULT 'cn-hangzhou'"); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN aliyun_directmail_access_key_id TEXT'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN aliyun_directmail_access_key_secret TEXT'); } catch { /* already exists */ }
+
+  // Migrate old aliyun_directmail_api_key (format: AccessKeyId:AccessKeySecret) to new separate columns
+  const row = sqlite.prepare('SELECT aliyun_directmail_api_key FROM smtp_config WHERE id = ?').get('default') as { aliyun_directmail_api_key?: string } | undefined;
+  if (row?.aliyun_directmail_api_key) {
+    const parts = row.aliyun_directmail_api_key.split(':');
+    if (parts.length === 2) {
+      const [accessKeyId, accessKeySecret] = parts;
+      // Only update if new columns are empty
+      const existing = sqlite.prepare('SELECT aliyun_directmail_access_key_id, aliyun_directmail_access_key_secret FROM smtp_config WHERE id = ?')
+        .get('default') as { aliyun_directmail_access_key_id?: string; aliyun_directmail_access_key_secret?: string };
+      if (!existing.aliyun_directmail_access_key_id && !existing.aliyun_directmail_access_key_secret) {
+        sqlite.prepare('UPDATE smtp_config SET aliyun_directmail_access_key_id = ?, aliyun_directmail_access_key_secret = ? WHERE id = ?')
+          .run(accessKeyId, accessKeySecret, 'default');
+      }
+    }
+  }
 
   console.log('[DB] Email verification system migration complete');
 }

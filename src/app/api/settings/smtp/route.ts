@@ -21,7 +21,8 @@ export async function GET() {
         password: '',
         zeaburApiKey: '',
         resendApiKey: '',
-        aliyunDirectMailApiKey: '',
+        aliyunDirectMailAccessKeyId: '',
+        aliyunDirectMailAccessKeySecret: '',
         aliyunDirectMailRegion: 'cn-hangzhou',
         fromEmail: '',
         fromName: 'Subscribe Anything',
@@ -39,7 +40,8 @@ export async function GET() {
       password: '', // never expose password
       zeaburApiKey: row.zeaburApiKey ? '••••••••' : '', // mask key
       resendApiKey: row.resendApiKey ? '••••••••' : '', // mask key
-      aliyunDirectMailApiKey: row.aliyunDirectMailApiKey ? '••••••••' : '', // mask key
+      aliyunDirectMailAccessKeyId: (row as any).aliyunDirectMailAccessKeyId ? '••••••••' : '', // mask key
+      aliyunDirectMailAccessKeySecret: (row as any).aliyunDirectMailAccessKeySecret ? '••••••••' : '', // mask key
       aliyunDirectMailRegion: row.aliyunDirectMailRegion ?? 'cn-hangzhou',
       fromEmail: row.fromEmail ?? '',
       fromName: row.fromName ?? 'Subscribe Anything',
@@ -62,7 +64,7 @@ export async function PUT(req: Request) {
   try {
     await requireAdmin();
     const body = await req.json();
-    const { provider = 'smtp', host, port, secure, user, password, zeaburApiKey, resendApiKey, aliyunDirectMailApiKey, aliyunDirectMailRegion, fromEmail, fromName, requireVerification } = body;
+    const { provider = 'smtp', host, port, secure, user, password, zeaburApiKey, resendApiKey, aliyunDirectMailAccessKeyId, aliyunDirectMailAccessKeySecret, aliyunDirectMailRegion, fromEmail, fromName, requireVerification } = body;
 
     if (provider === 'zeabur') {
       if (!fromEmail) {
@@ -87,14 +89,15 @@ export async function PUT(req: Request) {
       password: smtpConfig.password,
       zeaburApiKey: smtpConfig.zeaburApiKey,
       resendApiKey: smtpConfig.resendApiKey,
-      aliyunDirectMailApiKey: smtpConfig.aliyunDirectMailApiKey,
     }).from(smtpConfig).where(eq(smtpConfig.id, 'default')).get();
 
     // Keep existing secrets if new ones are empty
     const finalPassword = password || (existing?.password ?? '');
     const finalZeaburApiKey = zeaburApiKey && zeaburApiKey !== '••••••••' ? zeaburApiKey : (existing?.zeaburApiKey ?? null);
     const finalResendApiKey = resendApiKey && resendApiKey !== '••••••••' ? resendApiKey : (existing?.resendApiKey ?? null);
-    const finalAliyunDirectMailApiKey = aliyunDirectMailApiKey && aliyunDirectMailApiKey !== '••••••••' ? aliyunDirectMailApiKey : (existing?.aliyunDirectMailApiKey ?? null);
+    // For Aliyun, we always use the provided values (never keep old values since they're now separate fields)
+    const finalAliyunDirectMailAccessKeyId = aliyunDirectMailAccessKeyId && aliyunDirectMailAccessKeyId !== '••••••••' ? aliyunDirectMailAccessKeyId : null;
+    const finalAliyunDirectMailAccessKeySecret = aliyunDirectMailAccessKeySecret && aliyunDirectMailAccessKeySecret !== '••••••••' ? aliyunDirectMailAccessKeySecret : null;
 
     const now = new Date();
     db.insert(smtpConfig)
@@ -108,7 +111,8 @@ export async function PUT(req: Request) {
         password: finalPassword,
         zeaburApiKey: finalZeaburApiKey,
         resendApiKey: finalResendApiKey,
-        aliyunDirectMailApiKey: finalAliyunDirectMailApiKey,
+        aliyunDirectMailAccessKeyId: finalAliyunDirectMailAccessKeyId,
+        aliyunDirectMailAccessKeySecret: finalAliyunDirectMailAccessKeySecret,
         aliyunDirectMailRegion: aliyunDirectMailRegion || 'cn-hangzhou',
         fromEmail: fromEmail || null,
         fromName: fromName || 'Subscribe Anything',
@@ -126,7 +130,8 @@ export async function PUT(req: Request) {
           password: finalPassword,
           zeaburApiKey: finalZeaburApiKey,
           resendApiKey: finalResendApiKey,
-          aliyunDirectMailApiKey: finalAliyunDirectMailApiKey,
+          aliyunDirectMailAccessKeyId: finalAliyunDirectMailAccessKeyId,
+          aliyunDirectMailAccessKeySecret: finalAliyunDirectMailAccessKeySecret,
           aliyunDirectMailRegion: aliyunDirectMailRegion || 'cn-hangzhou',
           fromEmail: fromEmail || null,
           fromName: fromName || 'Subscribe Anything',

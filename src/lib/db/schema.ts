@@ -399,7 +399,8 @@ export const smtpConfig = sqliteTable('smtp_config', {
   provider: text('provider').notNull().default('smtp'), // 'smtp' | 'zeabur' | 'resend' | 'aliyun'
   zeaburApiKey: text('zeabur_api_key'), // Zeabur Email API Key
   resendApiKey: text('resend_api_key'), // Resend API Key
-  aliyunDirectMailApiKey: text('aliyun_directmail_api_key'), // 阿里云 DirectMail API Key
+  aliyunDirectMailAccessKeyId: text('aliyun_directmail_access_key_id'), // 阿里云 DirectMail AccessKey ID
+  aliyunDirectMailAccessKeySecret: text('aliyun_directmail_access_key_secret'), // 阿里云 DirectMail AccessKey Secret
   aliyunDirectMailRegion: text('aliyun_directmail_region').default('cn-hangzhou'), // 阿里云 DirectMail 区域
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
