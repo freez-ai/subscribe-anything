@@ -5,7 +5,8 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Play, Wrench, Clock, X, Loader2, Trash2,
-  CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Code2, Copy, Check, Pencil, ScrollText
+  CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Code2, Copy, Check, Pencil, ScrollText,
+  XOctagon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +62,15 @@ export default function SourcesPage() {
   const dismissNotif = async (nid: string) => {
     await fetch(`/api/notifications/${nid}/read`, { method: 'POST' });
     setNotifs((p) => p.filter((n) => n.id !== nid));
+  };
+
+  const dismissBatch = async (ids: string[]) => {
+    setNotifs((p) => p.filter((n) => !ids.includes(n.id)));
+    await fetch('/api/notifications/read-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
   };
 
   const handleToggle = async (src: Source, checked: boolean) => {
@@ -137,23 +147,12 @@ export default function SourcesPage() {
         <span className="text-sm text-muted-foreground">{sources.length} 个源</span>
       </div>
 
-      {/* Notification banners — source notifications only */}
-      {notifs.filter((n) => n.type !== 'cards_collected').map((n) => (
-        <div key={n.id} className={[
-          'flex items-start gap-3 rounded-lg border px-4 py-3 mb-2 text-sm',
-          n.type === 'source_failed'
-            ? 'border-destructive/30 bg-destructive/10 text-destructive'
-            : 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400',
-        ].join(' ')}>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium">{n.title}</p>
-            {n.body && <p className="text-xs mt-0.5 opacity-80">{n.body}</p>}
-          </div>
-          <button onClick={() => dismissNotif(n.id)} className="opacity-60 hover:opacity-100 flex-shrink-0">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ))}
+      {/* Notification banners — grouped by type */}
+      <NotificationBanners
+        notifs={notifs.filter((n) => n.type !== 'cards_collected')}
+        onDismiss={dismissNotif}
+        onDismissBatch={dismissBatch}
+      />
 
       {/* Empty state */}
       {sources.length === 0 ? (
@@ -235,6 +234,99 @@ export default function SourcesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/* ── Notification Banners (grouped) ── */
+function NotificationBanners({ notifs, onDismiss, onDismissBatch }: {
+  notifs: Notification[];
+  onDismiss: (id: string) => void;
+  onDismissBatch: (ids: string[]) => void;
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  if (notifs.length === 0) return null;
+
+  // Group: source_failed in one group, everything else in another
+  const groups: Record<string, Notification[]> = {};
+  for (const n of notifs) {
+    const key = n.type === 'source_failed' ? 'source_failed' : 'source_ok';
+    (groups[key] ??= []).push(n);
+  }
+
+  const groupMeta: Record<string, { label: string; style: string }> = {
+    source_failed: {
+      label: '个订阅源采集失败',
+      style: 'border-destructive/30 bg-destructive/10 text-destructive',
+    },
+    source_ok: {
+      label: '个订阅源状态更新',
+      style: 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400',
+    },
+  };
+
+  return (
+    <>
+      {Object.entries(groups).map(([key, items]) => {
+        const meta = groupMeta[key];
+        if (items.length === 1) {
+          // Single notification — render inline
+          const n = items[0];
+          return (
+            <div key={n.id} className={`flex items-start gap-3 rounded-lg border px-4 py-3 mb-2 text-sm ${meta.style}`}>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">{n.title}</p>
+                {n.body && <p className="text-xs mt-0.5 opacity-80">{n.body}</p>}
+              </div>
+              <button onClick={() => onDismiss(n.id)} className="opacity-60 hover:opacity-100 flex-shrink-0">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        }
+
+        // Multiple notifications — collapsible group
+        const isOpen = expanded[key] ?? false;
+        return (
+          <div key={key} className={`rounded-lg border mb-2 text-sm ${meta.style}`}>
+            {/* Group header */}
+            <div className="flex items-center gap-3 px-4 py-3">
+              <button
+                className="flex-1 min-w-0 flex items-center gap-2 text-left"
+                onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}
+              >
+                {isOpen ? <ChevronUp className="h-4 w-4 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 flex-shrink-0" />}
+                <span className="font-medium">{items.length} {meta.label}</span>
+              </button>
+              <button
+                onClick={() => onDismissBatch(items.map((n) => n.id))}
+                className="text-xs opacity-70 hover:opacity-100 flex-shrink-0 flex items-center gap-1"
+              >
+                <XOctagon className="h-3.5 w-3.5" />
+                全部关闭
+              </button>
+            </div>
+
+            {/* Expanded list */}
+            {isOpen && (
+              <div className="border-t border-current/10 px-4 pb-2">
+                {items.map((n) => (
+                  <div key={n.id} className="flex items-start gap-3 py-2 border-b border-current/5 last:border-b-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium">{n.title}</p>
+                      {n.body && <p className="text-xs mt-0.5 opacity-80">{n.body}</p>}
+                    </div>
+                    <button onClick={() => onDismiss(n.id)} className="opacity-60 hover:opacity-100 flex-shrink-0">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
