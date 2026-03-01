@@ -7,7 +7,8 @@ import { requireAuth } from '@/lib/auth';
 
 // POST /api/sources/[id]/trigger
 // Manually trigger a collection run for a source.
-// Bypasses the p-limit queue — runs immediately and returns the result.
+// Returns immediately; collection runs in background.
+// Frontend polls /api/sources/retry-states to track progress.
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -31,10 +32,12 @@ export async function POST(
     // Clear any pending retry before manual trigger
     clearRetry(id);
 
-    // Run directly — does NOT go through p-limit
-    const collectResult = await collect(id);
+    // Fire and forget — frontend polls retry-states for progress
+    collect(id).catch((err) =>
+      console.error(`[Trigger] collect failed for ${id}:`, err)
+    );
 
-    return Response.json(collectResult);
+    return Response.json({ triggered: true });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });

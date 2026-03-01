@@ -14,7 +14,7 @@ import { runScript } from '@/lib/sandbox/runner';
 import { hash } from '@/lib/utils/hash';
 import { nextCronDate } from '@/lib/utils/cron';
 import { createNotification } from '@/lib/notifications';
-import { scheduleRetry, clearRetry } from './retryManager';
+import { scheduleRetry, clearRetry, markCollecting, clearCollecting } from './retryManager';
 
 export interface CollectResult {
   newItems: number;
@@ -31,6 +31,8 @@ export async function collect(sourceId: string): Promise<CollectResult> {
     return { newItems: 0, skipped: 0, error: `Source ${sourceId} not found` };
   }
 
+  markCollecting(sourceId);
+
   const subscription = db
     .select()
     .from(subscriptions)
@@ -45,12 +47,14 @@ export async function collect(sourceId: string): Promise<CollectResult> {
     runResult = await runScript(source.script);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
+    clearCollecting(sourceId);
     _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: errorMsg };
   }
 
   if (!runResult.success) {
     const errorMsg = runResult.error ?? 'Script error';
+    clearCollecting(sourceId);
     _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: runResult.error };
   }
@@ -60,6 +64,7 @@ export async function collect(sourceId: string): Promise<CollectResult> {
   // ── Zero items = script broken (returns nothing useful) ─────────────────────
   if (items.length === 0) {
     const errorMsg = '脚本执行成功但未返回任何数据，请检查脚本逻辑或目标页面是否变更';
+    clearCollecting(sourceId);
     _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: errorMsg };
   }
@@ -130,6 +135,7 @@ export async function collect(sourceId: string): Promise<CollectResult> {
   }
 
   // ── Update source stats ───────────────────────────────────────────────────────
+  clearCollecting(sourceId);
   clearRetry(sourceId);
   const nextRun = nextCronDate(source.cronExpression);
   db.update(sources)
@@ -201,7 +207,6 @@ function _markRetrying(
       lastRunAt: now,
       lastRunSuccess: false,
       lastError: errorMsg,
-      totalRuns: sql`${sources.totalRuns} + 1`,
       updatedAt: now,
     })
     .where(eq(sources.id, source.id))

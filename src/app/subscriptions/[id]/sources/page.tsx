@@ -33,6 +33,7 @@ interface RetryInfo {
   maxAttempts: number;
   nextRetryAt: number;
   lastError: string;
+  collecting?: boolean;
 }
 
 export default function SourcesPage() {
@@ -79,23 +80,42 @@ export default function SourcesPage() {
         const data: Record<string, RetryInfo> = await res.json();
         setRetryStates(data);
 
-        // If a source was retrying before but no longer is, refetch sources
+        // If a source was tracked before but no longer is, collection finished
         const currentIds = new Set(Object.keys(data));
         const prevIds = prevRetryIdsRef.current;
+        const finishedIds: string[] = [];
         for (const pid of prevIds) {
-          if (!currentIds.has(pid)) {
-            fetchSources();
-            break;
-          }
+          if (!currentIds.has(pid)) finishedIds.push(pid);
         }
         prevRetryIdsRef.current = currentIds;
+
+        if (finishedIds.length > 0) {
+          // Refetch sources to get updated stats
+          const srcRes = await fetch(`/api/sources?subscriptionId=${id}`);
+          if (srcRes.ok) {
+            const d = await srcRes.json();
+            const updated: Source[] = Array.isArray(d.data) ? d.data : [];
+            setSources(updated);
+
+            // Show toast for each finished source
+            for (const fid of finishedIds) {
+              const src = updated.find((s) => s.id === fid);
+              if (src && src.lastRunSuccess) {
+                showToast(`${src.title}：采集完成`);
+              } else if (src && !src.lastRunSuccess) {
+                showToast(`${src.title}：采集失败`, false);
+              }
+            }
+          }
+          fetchNotifs();
+        }
       } catch { /* ignore */ }
     };
 
     poll();
     const timer = setInterval(poll, 3000);
     return () => clearInterval(timer);
-  }, [sources.length, fetchSources]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sources.length, id, fetchNotifs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dismissNotif = async (nid: string) => {
     await fetch(`/api/notifications/${nid}/read`, { method: 'POST' });
@@ -120,13 +140,12 @@ export default function SourcesPage() {
   };
 
   const handleTrigger = async (src: Source) => {
-    setSources((p) => p.map((s) => s.id === src.id ? { ...s, _triggering: true } as unknown as Source : s));
     try {
       const res = await fetch(`/api/sources/${src.id}/trigger`, { method: 'POST' });
       const d = await res.json();
-      if (d.error) showToast(`采集失败: ${d.error}`, false);
-      else showToast(`采集完成：新增 ${d.newItems} 条，跳过 ${d.skipped} 条`);
-      fetchSources();
+      if (d.error) { showToast(`触发失败: ${d.error}`, false); return; }
+      showToast('已触发采集');
+      // Collecting state will be picked up by retry-states polling
     } catch {
       showToast('网络错误', false);
     }
@@ -432,13 +451,26 @@ function RetryBanner({ retryState }: { retryState: RetryInfo }) {
     return () => clearInterval(timer);
   }, []);
 
+  // First attempt — currently collecting, no retry yet
+  if (retryState.attempt === 0) {
+    return (
+      <div className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400 rounded px-2 py-1.5 flex items-center gap-1.5">
+        <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
+        正在采集...
+      </div>
+    );
+  }
+
+  // Retry scheduled — show countdown or "executing"
   const remaining = Math.max(0, Math.ceil((retryState.nextRetryAt - now) / 1000));
   return (
     <div className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400 rounded px-2 py-1.5 flex items-center gap-1.5">
       <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
-      {remaining > 0
-        ? `采集失败，${remaining}s 后第 ${retryState.attempt}/${retryState.maxAttempts} 次重试...`
-        : `正在第 ${retryState.attempt}/${retryState.maxAttempts} 次重试...`}
+      {retryState.collecting
+        ? `正在第 ${retryState.attempt}/${retryState.maxAttempts} 次重试...`
+        : remaining > 0
+          ? `采集失败，${remaining}s 后第 ${retryState.attempt}/${retryState.maxAttempts} 次重试...`
+          : `正在第 ${retryState.attempt}/${retryState.maxAttempts} 次重试...`}
     </div>
   );
 }

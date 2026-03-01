@@ -16,6 +16,35 @@ export interface RetryState {
 }
 
 const retryStates = new Map<string, RetryState>();
+const collectingSet = new Set<string>();
+
+/**
+ * Mark a source as currently collecting.
+ */
+export function markCollecting(sourceId: string): void {
+  collectingSet.add(sourceId);
+}
+
+/**
+ * Clear the collecting flag.
+ */
+export function clearCollecting(sourceId: string): void {
+  collectingSet.delete(sourceId);
+}
+
+/**
+ * Check if a source is currently collecting.
+ */
+export function isCollecting(sourceId: string): boolean {
+  return collectingSet.has(sourceId);
+}
+
+/**
+ * Get all currently collecting source IDs.
+ */
+export function getCollectingSet(): Set<string> {
+  return collectingSet;
+}
 
 /**
  * Schedule a retry for a failed source.
