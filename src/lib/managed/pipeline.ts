@@ -811,6 +811,23 @@ export async function runManagedPipeline(
 
         await Promise.all(pipelineTasks);
       }
+
+      // Add skipped (unselected) sources from allFoundSources
+      const processedUrls = new Set(generatedSources.map((s) => s.url));
+      for (const src of allFoundSources) {
+        if (!processedUrls.has(src.url)) {
+          generatedSources.push({
+            title: src.title,
+            url: src.url,
+            description: src.description,
+            script: '',
+            cronExpression: '0 * * * *',
+            initialItems: [],
+            isEnabled: false,
+            failedReason: '未生成',
+          });
+        }
+      }
     }
 
     // ── Phase 3: complete ─────────────────────────────────────────────────────
