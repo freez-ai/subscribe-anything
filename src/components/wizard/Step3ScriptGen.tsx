@@ -66,6 +66,22 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
       // Pre-populate from state.generatedSources (takeover)
       const preGen = state.generatedSources.find((s) => s.url === source.url);
       if (preGen) {
+        // Check if this source actually failed or was never generated
+        if (preGen.failedReason) {
+          if (preGen.failedReason === '未生成') {
+            // Source was never generated — treat as pending/skipped based on selection
+            return selectedSet.has(i) ? { status: 'pending' as const } : { status: 'skipped' as const };
+          }
+          return {
+            status: 'failed' as const,
+            error: preGen.failedReason,
+            script: preGen.script,
+          };
+        }
+        if (!preGen.isEnabled && !preGen.script) {
+          // Disabled with no script — treat as pending/skipped
+          return selectedSet.has(i) ? { status: 'pending' as const } : { status: 'skipped' as const };
+        }
         return {
           status: 'success' as const,
           script: preGen.script,
