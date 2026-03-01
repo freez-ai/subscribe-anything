@@ -21,12 +21,20 @@ export async function POST(req: Request) {
 
     const isZeabur = config?.provider === 'zeabur';
     const isResend = config?.provider === 'resend';
+    const isAliyun = config?.provider === 'aliyun';
 
     let configured = false;
     if (isZeabur) {
       configured = !!(config?.zeaburApiKey && config.fromEmail);
     } else if (isResend) {
       configured = !!(config?.resendApiKey && config.fromEmail);
+    } else if (isAliyun) {
+      const aliyunConfig = config as any;
+      configured = !!(
+        aliyunConfig?.aliyunDirectMailAccessKeyId &&
+        aliyunConfig?.aliyunDirectMailAccessKeySecret &&
+        config.fromEmail
+      );
     } else {
       configured = !!(config?.host && config?.user && config?.password);
     }
