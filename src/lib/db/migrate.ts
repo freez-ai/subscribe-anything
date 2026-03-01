@@ -13,6 +13,10 @@ const DEFAULT_PROMPT_TEMPLATES = [
     description: '引导智能体通过网络搜索，为给定主题找到合适的数据源',
     content: `为主题"{{topic}}"（监控条件：{{criteria}}）找到 5-10 个高质量数据源。
 
+**工具调用限制**
+- webSearch 最多调用 10 次，请合理规划搜索策略
+- checkFeed 可多次调用（每次可验证多个 URL）
+
 **步骤**
 1. webSearch：确认实体标准名称/别名，搜索相关订阅源。**同时搜索官方 RSS/Atom 源**（如搜"X站 RSS"、"X站 feed"），很多网站本身提供官方 RSS，优先使用
 

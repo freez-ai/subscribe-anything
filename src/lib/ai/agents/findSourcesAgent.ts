@@ -51,6 +51,10 @@ export async function findSourcesAgent(
   let lastTextBuffer = '';
   let allTextBuffer = '';
 
+  // Track webSearch call count — max 10 calls as per prompt template
+  let webSearchCount = 0;
+  const MAX_WEB_SEARCH_CALLS = 10;
+
   // Agentic loop — max 32 iterations to prevent runaway
   for (let iteration = 0; iteration < 32; iteration++) {
     let textBuffer = '';
@@ -132,6 +136,7 @@ export async function findSourcesAgent(
           });
         } else if (tc.name === 'webSearch') {
           const { query } = JSON.parse(tc.args);
+          webSearchCount++;
 
           // Check for no-provider error before hitting the API — throw so sseStream
           // catches it and emits { type: 'error' } for the client to display
@@ -151,11 +156,19 @@ export async function findSourcesAgent(
             continue;
           }
 
-          resultContent = JSON.stringify(results);
+          // Add limit warning to result content when approaching/at limit
+          if (webSearchCount >= MAX_WEB_SEARCH_CALLS) {
+            const limitWarning = `\n\n[警告] webSearch 已达到最大调用次数限制（${MAX_WEB_SEARCH_CALLS}次），请立即停止继续搜索，使用现有结果完成任务。`;
+            resultContent = JSON.stringify(results) + limitWarning;
+          } else {
+            resultContent = JSON.stringify(results);
+          }
+
+          const resultSummary = `找到 ${results.length} 条结果 (webSearch: ${webSearchCount}/${MAX_WEB_SEARCH_CALLS})`;
           emit({
             type: 'tool_result',
             name: 'webSearch',
-            resultSummary: `找到 ${results.length} 条结果`,
+            resultSummary,
             success: true,
           });
         } else if (tc.name === 'checkFeed') {
