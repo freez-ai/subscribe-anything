@@ -56,7 +56,6 @@ export function NavSidebar({ className }: NavSidebarProps) {
 
       <div className="border-t p-3 space-y-1">
         <ThemeToggle variant="sidebar" />
-        <UserMenu />
         <a
           href="https://github.com/freez-ai/subscribe-anything"
           target="_blank"
@@ -66,6 +65,7 @@ export function NavSidebar({ className }: NavSidebarProps) {
           <Github className="h-4 w-4 shrink-0" />
           GitHub
         </a>
+        <UserMenu />
       </div>
     </aside>
   );
