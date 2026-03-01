@@ -46,6 +46,7 @@ export default function SourcesPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [retryStates, setRetryStates] = useState<Record<string, RetryInfo>>({});
   const prevRetryIdsRef = useRef<Set<string>>(new Set());
+  const collectingMapRef = useRef<Map<string, number>>(new Map()); // id → timestamp
   const [collectingIds, setCollectingIds] = useState<Set<string>>(new Set());
   const pollNowRef = useRef<(() => void) | null>(null);
 
@@ -82,34 +83,43 @@ export default function SourcesPage() {
         const data: Record<string, RetryInfo> = await res.json();
         setRetryStates(data);
 
-        // Clear local collectingIds once backend confirms collecting/retry state
         const backendIds = new Set(Object.keys(data));
-        setCollectingIds((prev) => {
-          const next = new Set(prev);
-          // If backend tracks it, local flag is no longer needed
-          for (const cid of prev) {
-            if (backendIds.has(cid)) next.delete(cid);
-          }
-          return next.size === prev.size ? prev : next;
-        });
 
-        // If a source was tracked before but no longer is, collection finished
-        const currentIds = backendIds;
+        // Detect sources whose collection has finished:
+        // 1) Was in backend last poll but now gone (retry/collecting ended)
         const prevIds = prevRetryIdsRef.current;
         const finishedIds: string[] = [];
         for (const pid of prevIds) {
-          if (!currentIds.has(pid)) finishedIds.push(pid);
+          if (!backendIds.has(pid)) finishedIds.push(pid);
         }
-        prevRetryIdsRef.current = currentIds;
+        prevRetryIdsRef.current = backendIds;
+
+        // 2) Local collectingIds that backend has no record of:
+        //    If added >2s ago, collection must have finished before polling saw it.
+        //    The 2s grace period avoids clearing ids before the backend even receives the request.
+        const now = Date.now();
+        const cMap = collectingMapRef.current;
+        setCollectingIds((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set<string>();
+          for (const cid of prev) {
+            if (backendIds.has(cid)) {
+              // Backend is tracking it — done locally, backend will handle lifecycle
+            } else {
+              const addedAt = cMap.get(cid) ?? 0;
+              if (now - addedAt < 2000) {
+                next.add(cid); // too fresh, keep it
+              } else {
+                // Backend doesn't know about it and it's been >2s — collection already finished
+                cMap.delete(cid);
+                if (!finishedIds.includes(cid)) finishedIds.push(cid);
+              }
+            }
+          }
+          return next;
+        });
 
         if (finishedIds.length > 0) {
-          // Clear local collectingIds for finished sources
-          setCollectingIds((prev) => {
-            const next = new Set(prev);
-            for (const fid of finishedIds) next.delete(fid);
-            return next.size === prev.size ? prev : next;
-          });
-
           // Refetch sources to get updated stats
           const srcRes = await fetch(`/api/sources?subscriptionId=${id}`);
           if (srcRes.ok) {
@@ -117,7 +127,6 @@ export default function SourcesPage() {
             const updated: Source[] = Array.isArray(d.data) ? d.data : [];
             setSources(updated);
 
-            // Show toast for each finished source
             for (const fid of finishedIds) {
               const src = updated.find((s) => s.id === fid);
               if (src && src.lastRunSuccess) {
@@ -162,11 +171,13 @@ export default function SourcesPage() {
 
   const handleTrigger = async (src: Source) => {
     // Immediately show loading on the button
+    collectingMapRef.current.set(src.id, Date.now());
     setCollectingIds((prev) => new Set(prev).add(src.id));
     try {
       const res = await fetch(`/api/sources/${src.id}/trigger`, { method: 'POST' });
       const d = await res.json();
       if (d.error) {
+        collectingMapRef.current.delete(src.id);
         setCollectingIds((prev) => { const n = new Set(prev); n.delete(src.id); return n; });
         showToast(`触发失败: ${d.error}`, false);
         return;
@@ -174,6 +185,7 @@ export default function SourcesPage() {
       // Trigger an immediate poll so backend collecting state is picked up fast
       setTimeout(() => pollNowRef.current?.(), 500);
     } catch {
+      collectingMapRef.current.delete(src.id);
       setCollectingIds((prev) => { const n = new Set(prev); n.delete(src.id); return n; });
       showToast('网络错误', false);
     }
