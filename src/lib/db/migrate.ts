@@ -98,8 +98,21 @@ URL：{{url}}
 {{items}}
 \`\`\`
 
+**CollectedItem 返回字段格式**
+- \`title\`（必填，string）：条目标题
+- \`url\`（必填，string）：条目详情链接
+- \`publishedAt\`（建议，ISO 8601 字符串）：发布时间，如 "2024-03-15T10:30:00Z" 或 "2024-03-15T18:30:00+08:00"
+- \`summary\`（可选，string）：内容摘要
+- \`thumbnailUrl\`（可选，string）：封面图片 URL
+- \`criteriaResult\`（监控条件不为"无"时必填）：'matched' | 'not_matched' | 'invalid'
+- \`metricValue\`（监控条件不为"无"时建议）：提取的监控指标原始值（如 "¥299"、"98%"、"5000+"）
+
 **审查步骤**
-1. 代码质量：有无假数据兜底？publishedAt 建议提取但非必须，不提取不算质量问题；fetch URL 是否限于数据源域名？监控条件不为"无"时是否正确实现 \`criteriaResult\`/\`metricValue\`？
+1. 代码质量：
+   - 有无假数据兜底？无数据应返回 \`[]\`
+   - \`publishedAt\` 建议提取但非必须，不提取不算质量问题
+   - fetch URL 是否限于数据源域名 \`{{domain}}\`？
+   - 监控条件不为"无"时是否正确实现 \`criteriaResult\`/\`metricValue\`？
 2. 数据真实性：用 webFetch 抓取前 2 条 URL，确认可访问且页面内容与 title 吻合；因网络限制无法访问时结合代码质量综合判断
 
 **输出**
