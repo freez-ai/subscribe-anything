@@ -326,7 +326,7 @@ function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onR
         <Button variant="outline" size="sm" className="gap-1 px-2" onClick={onViewScript} title="查看脚本">
           <Code2 className="h-3.5 w-3.5" />
         </Button>
-        {src.status === 'failed' && (
+        {(src.status === 'failed' || (src.status === 'pending' && !src.script)) && (
           <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
             <Wrench className="h-3.5 w-3.5" />AI 修复
           </Button>
@@ -420,7 +420,7 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange
             <Button variant="outline" size="sm" className="gap-1 px-2" onClick={onViewScript} title="查看脚本">
               <Code2 className="h-3.5 w-3.5" />
             </Button>
-            {src.status === 'failed' && (
+            {(src.status === 'failed' || (src.status === 'pending' && !src.script)) && (
               <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
                 <Wrench className="h-3.5 w-3.5" />AI 修复
               </Button>

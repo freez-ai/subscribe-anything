@@ -22,6 +22,8 @@ export interface SourceInput {
   cronExpression?: string;
   isEnabled?: boolean;
   initialItems?: CollectedItem[];
+  /** If set, the source failed script generation — stored as lastError, status='failed' */
+  failedReason?: string;
 }
 
 /**
@@ -40,6 +42,8 @@ export async function createSourcesForSubscription(
   for (const srcInput of sourcesInput) {
     if (!srcInput.title || !srcInput.url) continue;
 
+    const isFailed = !!srcInput.failedReason;
+
     // Insert source record
     const source = db
       .insert(sources)
@@ -50,13 +54,32 @@ export async function createSourcesForSubscription(
         url: srcInput.url,
         script: srcInput.script,
         cronExpression: srcInput.cronExpression ?? '0 * * * *',
-        isEnabled: srcInput.isEnabled !== false,
-        status: 'active',
+        isEnabled: isFailed ? false : srcInput.isEnabled !== false,
+        status: isFailed ? 'failed' : 'active',
+        lastError: isFailed ? srcInput.failedReason : null,
         createdAt: now,
         updatedAt: now,
       })
       .returning()
       .get();
+
+    // Skip message cards, stats, and scheduling for failed sources
+    if (isFailed) {
+      // Write notification for failed source
+      db.insert(notifications)
+        .values({
+          type: 'source_created',
+          title: `订阅源已创建（待修复）：${source.title}`,
+          body: srcInput.failedReason,
+          isRead: false,
+          subscriptionId,
+          relatedEntityType: 'source',
+          relatedEntityId: source.id,
+          createdAt: now,
+        })
+        .run();
+      continue;
+    }
 
     // Write initial message cards from validation step
     const items = srcInput.initialItems ?? [];

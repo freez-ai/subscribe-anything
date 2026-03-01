@@ -101,17 +101,16 @@ export default function Step4Confirm({
     setIsSubmitting(true);
     setErrorMessage('');
 
-    const sourcesPayload = sources
-      .filter((s) => !s.failedReason)
-      .map((s) => ({
-        title: s.title,
-        url: s.url,
-        description: s.description,
-        script: s.script,
-        cronExpression: s.cronExpression,
-        isEnabled: s.isEnabled,
-        initialItems: s.initialItems,
-      }));
+    const sourcesPayload = sources.map((s) => ({
+      title: s.title,
+      url: s.url,
+      description: s.description,
+      script: s.script,
+      cronExpression: s.cronExpression,
+      isEnabled: s.isEnabled,
+      initialItems: s.failedReason ? [] : s.initialItems,
+      failedReason: s.failedReason,
+    }));
 
     try {
       let createdId: string;
@@ -343,7 +342,7 @@ export default function Step4Confirm({
         <div className="flex gap-3">
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || sources.filter((s) => !s.failedReason).length === 0}
+            disabled={isSubmitting || sources.length === 0}
             className="flex-1 md:flex-none"
           >
             {isSubmitting ? (
