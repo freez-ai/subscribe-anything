@@ -371,6 +371,20 @@ export const emailVerificationCodes = sqliteTable('email_verification_codes', {
     .notNull(),
 });
 
+// ─── password_reset_tokens ───────────────────────────────────────────────────
+export const passwordResetTokens = sqliteTable('password_reset_tokens', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(), // 重置令牌
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  usedAt: integer('used_at', { mode: 'timestamp_ms' }), // null = 未使用
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
 // ─── smtp_config ─────────────────────────────────────────────────────────────
 export const smtpConfig = sqliteTable('smtp_config', {
   id: text('id').primaryKey().default('default'),
@@ -389,3 +403,10 @@ export const smtpConfig = sqliteTable('smtp_config', {
     .$defaultFn(() => new Date())
     .notNull(),
 });
+
+export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [passwordResetTokens.userId],
+    references: [users.id],
+  }),
+}));

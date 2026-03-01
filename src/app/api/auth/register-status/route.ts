@@ -17,13 +17,29 @@ export async function GET() {
 
     // First user becomes admin and always skips verification
     if (isFirstUser) {
-      return Response.json({ needsVerification: false, isFirstUser: true, googleOAuthEnabled });
+      return Response.json({
+        needsVerification: false,
+        isFirstUser: true,
+        googleOAuthEnabled,
+        canResetPassword: false,
+      });
     }
 
     const needsVerification = isSmtpConfigured() && isVerificationRequired();
-    return Response.json({ needsVerification, isFirstUser: false, googleOAuthEnabled });
+    const canResetPassword = needsVerification;
+    return Response.json({
+      needsVerification,
+      isFirstUser: false,
+      googleOAuthEnabled,
+      canResetPassword,
+    });
   } catch (err) {
     console.error('[Auth] register-status error:', err);
-    return Response.json({ needsVerification: false, isFirstUser: false, googleOAuthEnabled: false }, { status: 500 });
+    return Response.json({
+      needsVerification: false,
+      isFirstUser: false,
+      googleOAuthEnabled: false,
+      canResetPassword: false,
+    }, { status: 500 });
   }
 }

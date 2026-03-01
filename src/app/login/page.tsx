@@ -12,17 +12,24 @@ function LoginContent() {
   const { login, register, loginAsGuest } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(false);
 
   const redirect = searchParams.get('redirect') || '/';
+  const reset = searchParams.get('reset');
 
   useEffect(() => {
     fetch('/api/auth/register-status')
       .then(r => r.json())
       .then(data => setGoogleOAuthEnabled(!!data.googleOAuthEnabled))
       .catch(() => {});
-  }, []);
+
+    // Show success message if password was reset
+    if (reset === 'success') {
+      setSuccessMessage('密码已重置，请使用新密码登录');
+    }
+  }, [reset]);
 
   const handleSubmit = async (email: string, password: string, name?: string, verificationCode?: string) => {
     setError(null);
@@ -85,6 +92,12 @@ function LoginContent() {
             {mode === 'login' ? '登录您的账户' : '创建新账户'}
           </p>
         </div>
+
+        {successMessage && (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg text-sm">
+            {successMessage}
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">

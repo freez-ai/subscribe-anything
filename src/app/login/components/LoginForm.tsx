@@ -21,13 +21,16 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
   const [countdown, setCountdown] = useState(0);
   const [codeSent, setCodeSent] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
+  const [canResetPassword, setCanResetPassword] = useState(false);
 
   // Fetch whether this registration requires email verification
   useEffect(() => {
-    if (mode !== 'register') return;
     fetch('/api/auth/register-status')
       .then(r => r.json())
-      .then(data => setNeedsVerification(!!data.needsVerification))
+      .then(data => {
+        setNeedsVerification(!!data.needsVerification);
+        setCanResetPassword(!!data.canResetPassword);
+      })
       .catch(() => setNeedsVerification(false));
   }, [mode]);
 
@@ -160,7 +163,17 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
         {loading ? '处理中...' : mode === 'login' ? '登录' : '注册'}
       </Button>
 
-      <div className="text-center text-sm">
+      <div className="text-center text-sm space-y-1">
+        {mode === 'login' && canResetPassword && (
+          <div>
+            <a
+              href="/reset-password"
+              className="text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
+            >
+              忘记密码？
+            </a>
+          </div>
+        )}
         <button
           type="button"
           onClick={onToggleMode}
