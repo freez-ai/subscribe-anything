@@ -375,7 +375,7 @@ function StatusBadge({ status, retryState }: { status: Source['status']; retrySt
   if (retryState) {
     return (
       <Badge variant="outline" className="text-xs bg-orange-500/15 text-orange-700 border-orange-500/30">
-        重试中 ({retryState.attempt}/{retryState.maxAttempts})
+        采集中
       </Badge>
     );
   }
