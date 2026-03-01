@@ -5,13 +5,15 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Play, Wrench, Clock, X, Loader2, Trash2,
-  CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Code2, Copy, Check, Pencil
+  CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Code2, Copy, Check, Pencil, ScrollText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { CRON_PRESETS, validateCron } from '@/lib/utils/cron';
 import { formatDistanceToNow } from '@/lib/utils/time';
+import type { LLMCallInfo } from '@/lib/ai/client';
+import LLMLogDialog from '@/components/debug/LLMLogDialog';
 
 /* ── Types ── */
 interface Source {
@@ -483,6 +485,10 @@ function RepairDialog({ source, onClose, showToast }: {
   const [repairedScript, setRepairedScript] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
+  const [totalTokens, setTotalTokens] = useState(0);
+  const [showLog, setShowLog] = useState(false);
+  const countedCallsRef = useRef<Set<number>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -531,6 +537,21 @@ function RepairDialog({ source, onClose, showToast }: {
             } else if (ev.type === 'failed') {
               addMsg(`❌ 修复失败：${ev.reason ?? '未知原因'}`);
               if (ev.script) setRepairedScript(ev.script);
+            } else if (ev.type === 'llm_call') {
+              const info = ev as unknown as LLMCallInfo;
+              setLlmCalls((prev) => {
+                const existingIdx = prev.findIndex((c) => c.callIndex === info.callIndex);
+                if (existingIdx >= 0) {
+                  const next = [...prev];
+                  next[existingIdx] = info;
+                  return next;
+                }
+                return [...prev, info];
+              });
+              if (!info.streaming && info.usage?.total && !countedCallsRef.current.has(info.callIndex)) {
+                countedCallsRef.current.add(info.callIndex);
+                setTotalTokens((prev) => prev + info.usage!.total);
+              }
             }
           } catch { /* ignore */ }
         }
@@ -584,12 +605,36 @@ function RepairDialog({ source, onClose, showToast }: {
             </div>
           ))}
           {!done && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>AI 正在修复中…</span>
+            <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>AI 正在修复中…</span>
+              </div>
+              {llmCalls.length > 0 && (
+                <button
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowLog(true)}
+                >
+                  <ScrollText className="h-3 w-3" />
+                  查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
+                </button>
+              )}
             </div>
           )}
         </div>
+
+        {/* LLM log button (done) */}
+        {done && llmCalls.length > 0 && (
+          <div className="px-5 pb-1 flex justify-center">
+            <button
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowLog(true)}
+            >
+              <ScrollText className="h-3 w-3" />
+              查看 LLM 调用日志（{totalTokens.toLocaleString()} tokens）
+            </button>
+          </div>
+        )}
 
         {/* Actions */}
         {done && (
@@ -606,6 +651,16 @@ function RepairDialog({ source, onClose, showToast }: {
           </div>
         )}
       </div>
+
+      {/* LLM log dialog */}
+      {showLog && (
+        <LLMLogDialog
+          sourceTitle={source.title}
+          calls={llmCalls}
+          totalTokens={totalTokens}
+          onClose={() => setShowLog(false)}
+        />
+      )}
     </div>
   );
 }
