@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { eq } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import * as schema from './schema';
 
@@ -62,12 +63,14 @@ URL：{{url}}
 - 监控条件不为"无"时需加：\`criteriaResult\`（'matched'|'not_matched'|'invalid'）、\`metricValue\`
 - 无数据返回 \`[]\`，禁止构造假数据兜底；所有 fetch URL 必须限于 \`{{domain}}\` 域名
 
-**可用工具**
-- \`webFetch(url)\`：获取页面/Feed 内容
+**你的调研工具（仅供你在生成脚本前调研使用，绝不可出现在脚本代码中）**
+- \`webFetch(url)\`：获取页面/Feed 内容，用于了解页面结构
 - \`webFetchBrowser(url)\`：无头浏览器，捕获 XHR/Fetch 请求（适合 SPA 或被反爬页面）
 - \`webSearch(query)\`：搜索 API 文档、实体 ID 等辅助信息
 - \`rssRadar(queries)\`：查询现有 RSS 路由
 - \`validateScript(script)\`：在沙箱中验证脚本（**必须调用**）
+
+⚠️ 脚本代码内部只能使用沙箱环境中列出的 API（\`fetch\`、\`URL\`、\`URLSearchParams\`），不能调用 \`webFetch\`、\`webFetchBrowser\`、\`webSearch\`、\`rssRadar\` 等调研工具。
 
 **工作流程**
 1. 用 webFetch 抓取目标 URL，判断内容类型：
@@ -145,10 +148,18 @@ URL：{{url}}
 禁用：\`require\`/\`import\`、\`process\`/\`fs\`/\`Buffer\`、DOM API、\`console\`、\`setTimeout\`、\`atob\`/\`btoa\`、\`TextDecoder\`/\`TextEncoder\`
 HTML 解析：只能用字符串方法或正则
 
+**你的调研工具（仅供你调研使用，绝不可出现在脚本代码中）**
+- \`webFetch(url)\`：获取页面内容，用于了解当前页面结构
+- \`webFetchBrowser(url)\`：无头浏览器，捕获 XHR/Fetch 请求
+- \`webSearch(query)\`：搜索辅助信息
+- \`validateScript(script)\`：在沙箱中验证脚本（**必须调用**）
+
+⚠️ 脚本代码内部只能使用沙箱环境中列出的 API（\`fetch\`、\`URL\`、\`URLSearchParams\`），不能调用上述调研工具。
+
 **步骤**
-1. webFetch 重新抓取页面，分析当前结构；SPA 骨架则改用 webFetchBrowser，分析 capturedRequests 中的 API 端点
+1. 用 webFetch 重新抓取页面，分析当前结构；SPA 骨架则改用 webFetchBrowser，分析 capturedRequests 中的 API 端点
 2. 结合错误信息定位问题并修复；无数据返回 \`[]\`，禁止构造假数据兜底
-3. validateScript 验证，失败则重试（最多 3 次）
+3. 用 validateScript 验证，失败则重试（最多 3 次）
 
 **注意（脚本以 JSON 字符串传输，以下两类写法会导致语法报错）**
 - 正则中匹配字面 \`/\` 时用字符类 \`[/]\` 代替 \`\\/\`
@@ -453,14 +464,32 @@ function bootstrapSchema(sqlite: InstanceType<typeof Database>) {
 
 function seedPromptTemplates(db: ReturnType<typeof drizzle>) {
   for (const tpl of DEFAULT_PROMPT_TEMPLATES) {
-    db.insert(schema.promptTemplates)
-      .values({
-        ...tpl,
-        defaultContent: tpl.content,
-        updatedAt: new Date(),
-      })
-      .onConflictDoNothing()
-      .run();
+    // 先查询现有记录
+    const existing = db.select().from(schema.promptTemplates)
+      .where(eq(schema.promptTemplates.id, tpl.id)).get();
+
+    if (!existing) {
+      // 新记录，直接插入
+      db.insert(schema.promptTemplates)
+        .values({
+          ...tpl,
+          defaultContent: tpl.content,
+          updatedAt: new Date(),
+        })
+        .run();
+    } else {
+      // 已存在：始终更新 defaultContent；如果用户未自定义 content（content === 旧 defaultContent），也同步更新 content
+      const userCustomized = existing.content !== existing.defaultContent;
+      db.update(schema.promptTemplates)
+        .set({
+          defaultContent: tpl.content,
+          name: tpl.name,
+          description: tpl.description,
+          ...(userCustomized ? {} : { content: tpl.content }),
+        })
+        .where(eq(schema.promptTemplates.id, tpl.id))
+        .run();
+    }
   }
   console.log('[DB] Prompt templates seeded');
 }
