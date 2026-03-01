@@ -97,29 +97,43 @@ export async function POST(req: Request) {
 
     // Send email
     const { sendEmail } = await import('@/lib/email/smtp');
-    const resetLink = `${process.env.NEXT_PUBLIC_BASE_URL || ''}/reset-password?token=${resetToken}`;
+
+    // Get the base URL from request headers for generating proper reset link
+    const protocol = req.headers.get('x-forwarded-proto') || 'http';
+    const host = req.headers.get('host') || 'localhost:3000';
+    const baseUrl = `${protocol}://${host}`;
+    const resetLink = `${baseUrl}/reset-password?token=${resetToken}`;
 
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 480px; margin: 0 auto; padding: 40px 20px; }
-          .button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; }
-          .footer { font-size: 12px; color: #666; text-align: center; margin-top: 32px; }
-          .warning { font-size: 14px; color: #666; background: #fef3c7; padding: 12px; border-radius: 6px; margin-top: 24px; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 500px; margin: 0 auto; padding: 40px 20px; }
+          .button { display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 14px 28px; text-decoration: none !important; border-radius: 8px; font-weight: 500; font-size: 16px; }
+          .button:hover { background-color: #1d4ed8; }
+          .footer { font-size: 12px; color: #9ca3af; text-align: center; margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+          .warning { font-size: 14px; color: #92400e; background-color: #fef3c7; padding: 12px 16px; border-radius: 6px; margin-top: 24px; border: 1px solid #fcd34d; }
+          .link-text { color: #2563eb; word-break: break-all; font-size: 14px; }
         </style>
       </head>
       <body>
         <div class="container">
-          <h2>重置密码</h2>
+          <h2 style="margin-top: 0;">重置密码</h2>
           <p>您好！</p>
           <p>我们收到了您的密码重置请求。请点击下方按钮重置密码：</p>
-          <p><a href="${resetLink}" class="button">重置密码</a></p>
-          <p>如果按钮无法点击，请复制以下链接到浏览器：</p>
-          <p style="word-break: break-all; color: #666;">${resetLink}</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
+            <tr>
+              <td style="border-radius: 8px;" bgcolor="#2563eb">
+                <a href="${resetLink}" class="button" style="display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 14px 28px; text-decoration: none !important; border-radius: 8px; font-weight: 500; font-size: 16px; border: none;">重置密码</a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin: 24px 0 8px 0;">如果按钮无法点击，请复制以下链接到浏览器：</p>
+          <p class="link-text">${resetLink}</p>
           <p>重置链接有效期为 <strong>15 分钟</strong>。</p>
           <div class="warning">
             如果您没有请求重置密码，请忽略此邮件。
@@ -141,6 +155,8 @@ export async function POST(req: Request) {
 我们收到了您的密码重置请求。请访问以下链接重置密码：
 
 ${resetLink}
+
+如果链接无法点击，请复制完整链接到浏览器打开。
 
 重置链接有效期为 15 分钟。
 
