@@ -23,6 +23,7 @@ interface SmtpFormData {
   user: string;
   password: string;
   zeaburApiKey: string;
+  resendApiKey: string;
   fromEmail: string;
   fromName: string;
   requireVerification: boolean;
@@ -52,6 +53,7 @@ export default function SmtpConfigForm() {
     user: '',
     password: '',
     zeaburApiKey: '',
+    resendApiKey: '',
     fromEmail: '',
     fromName: 'Subscribe Anything',
     requireVerification: true,
@@ -312,6 +314,13 @@ export default function SmtpConfigForm() {
               >
                 Zeabur Email
               </button>
+              <button
+                type="button"
+                className={`px-4 py-1.5 text-sm transition-colors border-l ${form.provider === 'resend' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+                onClick={() => set('provider', 'resend')}
+              >
+                Resend
+              </button>
             </div>
           </div>
 
@@ -408,15 +417,49 @@ export default function SmtpConfigForm() {
             </>
           )}
 
+          {form.provider === 'resend' && (
+            <>
+              <div className="rounded-md bg-muted px-4 py-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Resend 说明</p>
+                <p>Resend 是一款现代化的事务性邮件服务，提供简单的 API 接口。需要在{' '}
+                  <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">
+                    Resend 控制台
+                  </a>
+                  {' '}创建 API Key，并配置发件人域名（免费套餐需使用 onboarding@resend.dev）。</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="resend-api-key">Resend API Key</Label>
+                <Input
+                  id="resend-api-key"
+                  type="password"
+                  value={form.resendApiKey}
+                  onChange={e => set('resendApiKey', e.target.value)}
+                  placeholder={
+                    form.configured && form.resendApiKey === '••••••••'
+                      ? '不修改请留空'
+                      : 're_...'
+                  }
+                  autoComplete="new-password"
+                />
+              </div>
+            </>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="smtp-from-email">
-              发件人邮箱{form.provider === 'zeabur' ? '' : '（可选）'}
+              发件人邮箱{(form.provider === 'zeabur' || form.provider === 'resend') ? '' : '（可选）'}
             </Label>
             <Input
               id="smtp-from-email"
               value={form.fromEmail}
               onChange={e => set('fromEmail', e.target.value)}
-              placeholder={form.provider === 'zeabur' ? '必须为已验证域名下的邮箱' : '留空则使用用户名'}
+              placeholder={
+                form.provider === 'zeabur'
+                  ? '必须为已验证域名下的邮箱'
+                  : form.provider === 'resend'
+                    ? '必填，如 onboarding@resend.dev'
+                    : '留空则使用用户名'
+              }
               autoComplete="off"
             />
           </div>

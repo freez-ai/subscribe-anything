@@ -15,6 +15,13 @@
       "when": 1772163351879,
       "tag": "0001_ambiguous_garia",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1772358564632,
+      "tag": "0002_mushy_corsair",
+      "breakpoints": true
     }
   ]
 }

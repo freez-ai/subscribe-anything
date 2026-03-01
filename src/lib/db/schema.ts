@@ -382,8 +382,9 @@ export const smtpConfig = sqliteTable('smtp_config', {
   fromEmail: text('from_email'), // 发件人地址
   fromName: text('from_name').default('Subscribe Anything'),
   requireVerification: integer('require_verification', { mode: 'boolean' }).notNull().default(true), // 注册是否需要邮箱验证码
-  provider: text('provider').notNull().default('smtp'), // 'smtp' | 'zeabur'
+  provider: text('provider').notNull().default('smtp'), // 'smtp' | 'zeabur' | 'resend'
   zeaburApiKey: text('zeabur_api_key'), // Zeabur Email API Key
+  resendApiKey: text('resend_api_key'), // Resend API Key
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date())
     .notNull(),

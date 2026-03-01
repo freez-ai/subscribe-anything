@@ -13,8 +13,9 @@ export interface SmtpConfigData {
   fromEmail?: string | null;
   fromName?: string | null;
   requireVerification: boolean;
-  provider: string; // 'smtp' | 'zeabur'
+  provider: string; // 'smtp' | 'zeabur' | 'resend'
   zeaburApiKey?: string | null;
+  resendApiKey?: string | null;
 }
 
 export interface SendEmailOptions {
@@ -46,6 +47,7 @@ export function getSmtpConfig(): SmtpConfigData | null {
     requireVerification: config.requireVerification ?? true,
     provider: config.provider ?? 'smtp',
     zeaburApiKey: config.zeaburApiKey,
+    resendApiKey: config.resendApiKey,
   };
 }
 
@@ -57,6 +59,9 @@ export function isSmtpConfigured(): boolean {
   if (!config) return false;
   if (config.provider === 'zeabur') {
     return !!(config.zeaburApiKey && config.fromEmail);
+  }
+  if (config.provider === 'resend') {
+    return !!(config.resendApiKey && config.fromEmail);
   }
   return !!(config.host && config.user && config.password);
 }
@@ -122,7 +127,37 @@ async function sendEmailViaZeabur(
 }
 
 /**
- * Send email using configured provider (SMTP or Zeabur Email)
+ * Send email via Resend API
+ */
+async function sendEmailViaResend(
+  config: SmtpConfigData,
+  { to, subject, html, text }: SendEmailOptions
+): Promise<{ success: boolean; error?: string }> {
+  const { Resend } = await import('resend');
+  const resend = new Resend(config.resendApiKey!);
+
+  const fromEmail = config.fromEmail || 'onboarding@resend.dev';
+  const fromName = config.fromName || 'Subscribe Anything';
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await resend.emails.send({
+      from: `${fromName} <${fromEmail}>`,
+      to: [to],
+      subject,
+      html: html || undefined,
+      text: text || undefined,
+    } as any);
+    return { success: true };
+  } catch (error) {
+    console.error('[Resend] Send error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Send email using configured provider (SMTP, Zeabur Email, or Resend)
  */
 export async function sendEmail({ to, subject, html, text }: SendEmailOptions): Promise<{ success: boolean; error?: string }> {
   const config = getSmtpConfig();
@@ -133,6 +168,10 @@ export async function sendEmail({ to, subject, html, text }: SendEmailOptions): 
 
   if (config.provider === 'zeabur') {
     return sendEmailViaZeabur(config, { to, subject, html, text });
+  }
+
+  if (config.provider === 'resend') {
+    return sendEmailViaResend(config, { to, subject, html, text });
   }
 
   const transporter = createTransporter(config);

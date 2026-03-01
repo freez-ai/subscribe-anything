@@ -20,7 +20,18 @@ export async function POST(req: Request) {
     const config = db.select().from(smtpConfig).where(eq(smtpConfig.id, 'default')).get();
 
     const isZeabur = config?.provider === 'zeabur';
-    if (!config || (isZeabur ? !config.zeaburApiKey : (!config.host || !config.user || !config.password))) {
+    const isResend = config?.provider === 'resend';
+
+    let configured = false;
+    if (isZeabur) {
+      configured = !!(config?.zeaburApiKey && config.fromEmail);
+    } else if (isResend) {
+      configured = !!(config?.resendApiKey && config.fromEmail);
+    } else {
+      configured = !!(config?.host && config?.user && config?.password);
+    }
+
+    if (!config || !configured) {
       return Response.json({ error: '请先保存邮件服务配置' }, { status: 400 });
     }
 

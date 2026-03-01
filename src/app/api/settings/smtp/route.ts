@@ -20,6 +20,7 @@ export async function GET() {
         user: '',
         password: '',
         zeaburApiKey: '',
+        resendApiKey: '',
         fromEmail: '',
         fromName: 'Subscribe Anything',
         requireVerification: true,
@@ -35,6 +36,7 @@ export async function GET() {
       user: row.user,
       password: '', // never expose password
       zeaburApiKey: row.zeaburApiKey ? '••••••••' : '', // mask key
+      resendApiKey: row.resendApiKey ? '••••••••' : '', // mask key
       fromEmail: row.fromEmail ?? '',
       fromName: row.fromName ?? 'Subscribe Anything',
       requireVerification: row.requireVerification ?? true,
@@ -56,11 +58,15 @@ export async function PUT(req: Request) {
   try {
     await requireAdmin();
     const body = await req.json();
-    const { provider = 'smtp', host, port, secure, user, password, zeaburApiKey, fromEmail, fromName, requireVerification } = body;
+    const { provider = 'smtp', host, port, secure, user, password, zeaburApiKey, resendApiKey, fromEmail, fromName, requireVerification } = body;
 
     if (provider === 'zeabur') {
       if (!fromEmail) {
         return Response.json({ error: 'fromEmail is required for Zeabur Email' }, { status: 400 });
+      }
+    } else if (provider === 'resend') {
+      if (!fromEmail) {
+        return Response.json({ error: 'fromEmail is required for Resend' }, { status: 400 });
       }
     } else {
       if (!host || !user) {
@@ -69,11 +75,12 @@ export async function PUT(req: Request) {
     }
 
     const db = getDb();
-    const existing = db.select({ password: smtpConfig.password, zeaburApiKey: smtpConfig.zeaburApiKey }).from(smtpConfig).where(eq(smtpConfig.id, 'default')).get();
+    const existing = db.select({ password: smtpConfig.password, zeaburApiKey: smtpConfig.zeaburApiKey, resendApiKey: smtpConfig.resendApiKey }).from(smtpConfig).where(eq(smtpConfig.id, 'default')).get();
 
     // Keep existing secrets if new ones are empty
     const finalPassword = password || (existing?.password ?? '');
     const finalZeaburApiKey = zeaburApiKey && zeaburApiKey !== '••••••••' ? zeaburApiKey : (existing?.zeaburApiKey ?? null);
+    const finalResendApiKey = resendApiKey && resendApiKey !== '••••••••' ? resendApiKey : (existing?.resendApiKey ?? null);
 
     const now = new Date();
     db.insert(smtpConfig)
@@ -86,6 +93,7 @@ export async function PUT(req: Request) {
         user: user || '',
         password: finalPassword,
         zeaburApiKey: finalZeaburApiKey,
+        resendApiKey: finalResendApiKey,
         fromEmail: fromEmail || null,
         fromName: fromName || 'Subscribe Anything',
         requireVerification: requireVerification !== false,
@@ -101,6 +109,7 @@ export async function PUT(req: Request) {
           user: user || '',
           password: finalPassword,
           zeaburApiKey: finalZeaburApiKey,
+          resendApiKey: finalResendApiKey,
           fromEmail: fromEmail || null,
           fromName: fromName || 'Subscribe Anything',
           requireVerification: requireVerification !== false,
