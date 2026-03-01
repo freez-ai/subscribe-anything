@@ -303,6 +303,21 @@ export async function runMigrations() {
   // === Managed subscription creation migration ===
   migrateManagedCreation(sqlite);
 
+  // === Analysis reports table ===
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS analysis_reports (
+      id TEXT PRIMARY KEY NOT NULL,
+      subscription_id TEXT NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT,
+      html_content TEXT NOT NULL,
+      card_count INTEGER NOT NULL DEFAULT 0,
+      is_starred INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   // Repair: older migrations incorrectly set user_id on base system templates.
   // Base templates must always have user_id = NULL so the cleanup DELETE below ignores them.
   try {
