@@ -68,8 +68,8 @@ export async function createSourcesForSubscription(
       // Write notification for failed source
       db.insert(notifications)
         .values({
-          type: 'source_created',
-          title: `订阅源已创建（待修复）：${source.title}`,
+          type: 'source_failed',
+          title: `订阅源待修复：${source.title}`,
           body: srcInput.failedReason,
           isRead: false,
           subscriptionId,

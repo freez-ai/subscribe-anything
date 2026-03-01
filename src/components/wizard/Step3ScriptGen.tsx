@@ -38,7 +38,7 @@ type SourceStatus =
   | { status: 'pending' }
   | { status: 'generating'; message?: string }
   | { status: 'success'; script: string; cronExpression: string; items: CollectedItem[]; unverified?: boolean }
-  | { status: 'failed'; error: string };
+  | { status: 'failed'; error: string; script?: string };
 
 function isInProgress(s: SourceStatus | undefined): boolean {
   return !!s && (s.status === 'pending' || s.status === 'generating');
@@ -181,7 +181,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
                   const current = prev[globalIdx];
                   if (current?.status === 'pending' || current?.status === 'generating') {
                     const next = [...prev];
-                    next[globalIdx] = { status: 'failed', error: logEvent.message };
+                    next[globalIdx] = { status: 'failed', error: logEvent.message, script: logEvent.payload?.script };
                     return next;
                   }
                   return prev;
@@ -258,7 +258,7 @@ export default function Step3ScriptGen({ state, onStateChange, onNext, onBack, o
         title: source.title,
         url: source.url,
         description: source.description,
-        script: '',
+        script: s.script ?? '',
         cronExpression: '0 * * * *',
         initialItems: [],
         isEnabled: false,

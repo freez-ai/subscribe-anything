@@ -274,7 +274,7 @@ export async function runGenerateScriptsStep(
               }
             );
           } else {
-            writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
+            writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url, script: result.script });
           }
         } catch (err) {
           unregisterSourceAbort(subscriptionId, source.url);
@@ -773,7 +773,7 @@ export async function runManagedPipeline(
                     unverified: true,
                   });
                 } else {
-                  writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url });
+                  writeLog(subscriptionId, 'generate_script', 'error', `"${source.title}" 脚本生成失败：${result.error ?? '未知错误'}`, { sourceUrl: source.url, script: result.script });
                 }
               } catch (err) {
                 unregisterSourceAbort(subscriptionId, source.url);
