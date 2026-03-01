@@ -35,6 +35,12 @@ interface RetryInfo {
   lastError: string;
   collecting?: boolean;
 }
+interface CollectResultInfo {
+  newItems: number;
+  skipped: number;
+  error?: string;
+  success: boolean;
+}
 
 export default function SourcesPage() {
   const { id } = useParams<{ id: string }>();
@@ -80,10 +86,13 @@ export default function SourcesPage() {
       try {
         const res = await fetch(`/api/sources/retry-states?ids=${ids}`);
         if (!res.ok) return;
-        const data: Record<string, RetryInfo> = await res.json();
-        setRetryStates(data);
+        const body: {
+          states: Record<string, RetryInfo>;
+          results: Record<string, CollectResultInfo>;
+        } = await res.json();
+        setRetryStates(body.states);
 
-        const backendIds = new Set(Object.keys(data));
+        const backendIds = new Set(Object.keys(body.states));
         const finishedIds: string[] = [];
 
         // 1) Was in backend last poll but now gone (retry/collecting ended)
@@ -122,11 +131,19 @@ export default function SourcesPage() {
             setSources(updated);
 
             for (const fid of finishedIds) {
-              const src = updated.find((s) => s.id === fid);
-              if (src && src.lastRunSuccess) {
-                showToast(`${src.title}：采集完成`);
-              } else if (src && !src.lastRunSuccess) {
-                showToast(`${src.title}：采集失败`, false);
+              const cr = body.results[fid];
+              if (cr && cr.success) {
+                showToast(`采集完成：新增 ${cr.newItems} 条，跳过 ${cr.skipped} 条`);
+              } else if (cr && !cr.success) {
+                showToast(`采集失败: ${cr.error ?? '未知错误'}`, false);
+              } else {
+                // No result info — fallback to source status
+                const src = updated.find((s) => s.id === fid);
+                if (src && src.lastRunSuccess) {
+                  showToast(`${src.title}：采集完成`);
+                } else if (src) {
+                  showToast(`${src.title}：采集失败`, false);
+                }
               }
             }
           }

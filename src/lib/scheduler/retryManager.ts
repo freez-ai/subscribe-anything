@@ -18,6 +18,35 @@ export interface RetryState {
 const retryStates = new Map<string, RetryState>();
 const collectingSet = new Set<string>();
 
+// ── Last collection result (kept for 30s for frontend to pick up) ───────────
+export interface CollectResultInfo {
+  newItems: number;
+  skipped: number;
+  error?: string;
+  success: boolean;
+  finishedAt: number; // timestamp ms
+}
+
+const lastResults = new Map<string, CollectResultInfo>();
+
+export function setLastResult(sourceId: string, result: CollectResultInfo): void {
+  lastResults.set(sourceId, result);
+  // Auto-clean after 30s
+  setTimeout(() => {
+    if (lastResults.get(sourceId)?.finishedAt === result.finishedAt) {
+      lastResults.delete(sourceId);
+    }
+  }, 30_000);
+}
+
+export function getLastResult(sourceId: string): CollectResultInfo | undefined {
+  return lastResults.get(sourceId);
+}
+
+export function getAllLastResults(): Map<string, CollectResultInfo> {
+  return lastResults;
+}
+
 /**
  * Mark a source as currently collecting.
  */

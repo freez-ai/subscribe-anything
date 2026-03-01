@@ -1,4 +1,4 @@
-import { getAllRetryStates, getCollectingSet, MAX_RETRIES } from '@/lib/scheduler/retryManager';
+import { getAllRetryStates, getCollectingSet, getAllLastResults, MAX_RETRIES } from '@/lib/scheduler/retryManager';
 
 // GET /api/sources/retry-states?ids=id1,id2,...
 export async function GET(req: Request) {
@@ -7,10 +7,12 @@ export async function GET(req: Request) {
 
   const allStates = getAllRetryStates();
   const collecting = getCollectingSet();
-  const result: Record<string, {
+  const allResults = getAllLastResults();
+  const states: Record<string, {
     attempt: number; maxAttempts: number; nextRetryAt: number; lastError: string;
     collecting?: boolean;
   }> = {};
+  const results: Record<string, { newItems: number; skipped: number; error?: string; success: boolean }> = {};
 
   const ids = idsParam ? idsParam.split(',').filter(Boolean) : undefined;
 
@@ -19,7 +21,7 @@ export async function GET(req: Request) {
     for (const id of ids) {
       const state = allStates.get(id);
       if (state) {
-        result[id] = {
+        states[id] = {
           attempt: state.attempt,
           maxAttempts: MAX_RETRIES,
           nextRetryAt: state.nextRetryAt,
@@ -29,7 +31,7 @@ export async function GET(req: Request) {
     }
   } else {
     for (const [id, state] of allStates) {
-      result[id] = {
+      states[id] = {
         attempt: state.attempt,
         maxAttempts: MAX_RETRIES,
         nextRetryAt: state.nextRetryAt,
@@ -41,8 +43,8 @@ export async function GET(req: Request) {
   // Add collecting-only entries (no retry state yet, first attempt)
   const targetIds = ids ?? [...collecting];
   for (const id of targetIds) {
-    if (collecting.has(id) && !result[id]) {
-      result[id] = {
+    if (collecting.has(id) && !states[id]) {
+      states[id] = {
         attempt: 0,
         maxAttempts: MAX_RETRIES,
         nextRetryAt: 0,
@@ -50,10 +52,19 @@ export async function GET(req: Request) {
         collecting: true,
       };
     }
-    if (result[id] && collecting.has(id)) {
-      result[id].collecting = true;
+    if (states[id] && collecting.has(id)) {
+      states[id].collecting = true;
     }
   }
 
-  return Response.json(result);
+  // Build last results
+  const resultIds = ids ?? [...allResults.keys()];
+  for (const id of resultIds) {
+    const r = allResults.get(id);
+    if (r) {
+      results[id] = { newItems: r.newItems, skipped: r.skipped, error: r.error, success: r.success };
+    }
+  }
+
+  return Response.json({ states, results });
 }

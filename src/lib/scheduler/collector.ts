@@ -14,7 +14,7 @@ import { runScript } from '@/lib/sandbox/runner';
 import { hash } from '@/lib/utils/hash';
 import { nextCronDate } from '@/lib/utils/cron';
 import { createNotification } from '@/lib/notifications';
-import { scheduleRetry, clearRetry, markCollecting, clearCollecting } from './retryManager';
+import { scheduleRetry, clearRetry, markCollecting, clearCollecting, setLastResult } from './retryManager';
 
 export interface CollectResult {
   newItems: number;
@@ -33,11 +33,23 @@ export async function collect(sourceId: string): Promise<CollectResult> {
 
   markCollecting(sourceId);
 
+  let result: CollectResult;
   try {
-    return await _doCollect(db, source, sourceId);
+    result = await _doCollect(db, source, sourceId);
   } finally {
     clearCollecting(sourceId);
   }
+
+  // Store result for frontend to pick up via polling
+  setLastResult(sourceId, {
+    newItems: result.newItems,
+    skipped: result.skipped,
+    error: result.error,
+    success: !result.error,
+    finishedAt: Date.now(),
+  });
+
+  return result;
 }
 
 async function _doCollect(
