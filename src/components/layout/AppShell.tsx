@@ -10,10 +10,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { loading } = useAuth();
   const pathname = usePathname();
 
-  // Don't show app shell on login page or while loading auth
+  // Don't show app shell on login page, reset-password page, or while loading auth
   const isLoginPage = pathname === '/login';
+  const isResetPasswordPage = pathname === '/reset-password';
 
-  if (isLoginPage) {
+  if (isLoginPage || isResetPasswordPage) {
     return <>{children}</>;
   }
 
