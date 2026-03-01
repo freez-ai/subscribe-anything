@@ -51,6 +51,7 @@ export default function SubscriptionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<{ newItems: number; skipped: number } | null>(null);
   const [pullDistance, setPullDistance] = useState(0);
   const [filterSources, setFilterSources] = useState<Source[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
@@ -116,19 +117,57 @@ export default function SubscriptionDetailPage() {
     return () => obs.disconnect();
   }, [hasMore, loading, offset, loadMore]);
 
-  /* ── Refresh all enabled sources ── */
+  /* ── Refresh sources (single selected or all enabled) ── */
   const handleRefreshAll = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
+    setRefreshResult(null);
     try {
-      const res = await fetch(`/api/sources?subscriptionId=${id}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const sources: Array<{ id: string; isEnabled: boolean }> = Array.isArray(data) ? data : (data.data ?? []);
-      const enabled = sources.filter((s) => s.isEnabled);
-      await Promise.all(
-        enabled.map((s) => fetch(`/api/sources/${s.id}/trigger`, { method: 'POST' }))
-      );
+      let sourceIds: string[];
+
+      if (selectedSourceId) {
+        // Only refresh the currently selected/filtered source
+        await fetch(`/api/sources/${selectedSourceId}/trigger`, { method: 'POST' });
+        sourceIds = [selectedSourceId];
+      } else {
+        // Refresh all enabled sources
+        const res = await fetch(`/api/sources?subscriptionId=${id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const sources: Array<{ id: string; isEnabled: boolean }> = Array.isArray(data) ? data : (data.data ?? []);
+        const enabled = sources.filter((s) => s.isEnabled);
+        if (enabled.length === 0) return;
+        await Promise.all(
+          enabled.map((s) => fetch(`/api/sources/${s.id}/trigger`, { method: 'POST' }))
+        );
+        sourceIds = enabled.map((s) => s.id);
+      }
+
+      // Poll retry-states until all triggered sources finish collecting
+      const idsParam = sourceIds.join(',');
+      let totalNew = 0;
+      let totalSkipped = 0;
+      for (let i = 0; i < 120; i++) { // max ~2 min
+        await new Promise((r) => setTimeout(r, 1000));
+        const statesRes = await fetch(`/api/sources/retry-states?ids=${idsParam}`);
+        if (!statesRes.ok) break;
+        const { states, results } = await statesRes.json() as {
+          states: Record<string, { collecting?: boolean }>;
+          results: Record<string, { newItems: number; skipped: number; success: boolean }>;
+        };
+        const stillCollecting = sourceIds.some((sid) => states[sid]?.collecting);
+        if (!stillCollecting) {
+          totalNew = 0;
+          totalSkipped = 0;
+          for (const sid of sourceIds) {
+            const r = results[sid];
+            if (r) { totalNew += r.newItems; totalSkipped += r.skipped; }
+          }
+          break;
+        }
+      }
+
+      setRefreshResult({ newItems: totalNew, skipped: totalSkipped });
       await fetchNotifs();
       await loadMore(0, true);
       const subRes = await fetch(`/api/subscriptions/${id}`);
@@ -136,7 +175,7 @@ export default function SubscriptionDetailPage() {
     } finally {
       setRefreshing(false);
     }
-  }, [id, refreshing, loadMore, fetchNotifs]);
+  }, [id, refreshing, selectedSourceId, loadMore, fetchNotifs]);
 
   /* ── Pull-to-refresh (mobile) ── */
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -308,6 +347,9 @@ export default function SubscriptionDetailPage() {
         onDismiss={dismissNotif}
       />
 
+      {/* Refresh result toast */}
+      <RefreshResultToast result={refreshResult} onDone={() => setRefreshResult(null)} />
+
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-muted-foreground">{cards.length} 条已加载</span>
@@ -462,6 +504,37 @@ function CardsCollectedToast({
     <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg px-4 py-2.5 text-sm bg-primary text-primary-foreground shadow-lg flex items-center gap-2 whitespace-nowrap">
       <Bell className="h-4 w-4 flex-shrink-0" />
       <span>新增 {totalNewCards} 条消息卡片</span>
+    </div>
+  );
+}
+
+/* ── Refresh Result Toast ── */
+function RefreshResultToast({
+  result,
+  onDone,
+}: {
+  result: { newItems: number; skipped: number } | null;
+  onDone: () => void;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!result) return;
+    setVisible(true);
+    const timer = setTimeout(() => {
+      setVisible(false);
+      onDone();
+    }, 3000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
+
+  if (!visible || !result) return null;
+
+  return (
+    <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg px-4 py-2.5 text-sm bg-primary text-primary-foreground shadow-lg flex items-center gap-2 whitespace-nowrap">
+      <RefreshCw className="h-4 w-4 flex-shrink-0" />
+      <span>已拉取 {result.newItems} 条，跳过 {result.skipped} 条</span>
     </div>
   );
 }
