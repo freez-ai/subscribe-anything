@@ -11,6 +11,11 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@alicloud/credentials": "^2.4.4",
+    "@alicloud/dm20151123": "^1.8.3",
+    "@alicloud/openapi-client": "^0.4.15",
+    "@alicloud/tea-typescript": "^1.8.0",
+    "@alicloud/tea-util": "^1.4.11",
     "@marsidev/react-turnstile": "^1.4.2",
     "@paralleldrive/cuid2": "^3.3.0",
     "@radix-ui/react-dialog": "^1.1.15",

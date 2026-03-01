@@ -464,7 +464,8 @@ export default function SmtpConfigForm() {
                   <a href="https://dm.console.aliyun.com/" target="_blank" rel="noopener noreferrer" className="underline">
                     阿里云 DirectMail 控制台
                   </a>
-                  {' '}开通服务并创建 API Key，同时需要配置发件人域名。</p>
+                  {' '}开通服务并创建 AccessKey，同时需要配置发件人域名。</p>
+                <p className="font-mono bg-background px-2 py-1 rounded mt-2">API Key 格式：AccessKeyId:AccessKeySecret</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="aliyun-api-key">阿里云 DirectMail API Key</Label>
@@ -476,10 +477,11 @@ export default function SmtpConfigForm() {
                   placeholder={
                     form.configured && form.aliyunDirectMailApiKey === '••••••••'
                       ? '不修改请留空'
-                      : 'LTAI...'
+                      : 'LTAIxxxxxx:xxxxxxxxxxxx'
                   }
                   autoComplete="new-password"
                 />
+                <p className="text-xs text-muted-foreground">格式：AccessKeyId:AccessKeySecret</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="aliyun-region">区域</Label>

@@ -170,53 +170,67 @@ async function sendEmailViaAliyunDirectMail(
   config: SmtpConfigData,
   { to, subject, html, text }: SendEmailOptions
 ): Promise<{ success: boolean; error?: string }> {
-  const region = config.aliyunDirectMailRegion || 'cn-hangzhou';
-  const endpoint = `https://dm.${region}.aliyuncs.com`;
-
   const fromEmail = config.fromEmail || 'noreply@example.com';
   const fromName = config.fromName || 'Subscribe Anything';
 
-  // Generate signature using Aliyun signature algorithm
-  const accountName = 'postmaster@' + fromEmail.split('@')[1];
-  const now = new Date();
-  const dateStr = now.toUTCString();
-  const nonce = Math.random().toString(36).substring(2);
+  // Parse API key: format should be "accessKeyId:accessKeySecret"
+  const apiKey = config.aliyunDirectMailApiKey;
+  if (!apiKey) {
+    return { success: false, error: 'Aliyun DirectMail API key is required' };
+  }
 
-  // Build request body
-  const body = {
-    AccountName: accountName,
-    AddressType: 1,
-    ReplyToAddress: false,
-    ToAddress: to,
-    FromAlias: fromName,
-    Subject: subject,
-    HtmlBody: html,
-    TextBody: text,
-  };
+  const keyParts = apiKey.split(':');
+  if (keyParts.length !== 2) {
+    return { success: false, error: 'Aliyun DirectMail API key format should be "accessKeyId:accessKeySecret"' };
+  }
 
-  const bodyStr = JSON.stringify(body);
+  const [accessKeyId, accessKeySecret] = keyParts;
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-mns-version': '2015-11-23',
-        'Date': dateStr,
-      },
-      body: bodyStr,
+    // Dynamically import Aliyun SDK
+    const Dm20151123 = await import('@alicloud/dm20151123');
+
+    // Create config with endpoint
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const configSdk: any = {
+      accessKeyId,
+      accessKeySecret,
+      endpoint: 'dm.aliyuncs.com',
+    };
+
+    // Create client
+    const client = new Dm20151123.default(configSdk);
+
+    // Build single send mail request
+    const request = new Dm20151123.SingleSendMailRequest({
+      accountName: fromEmail,
+      addressType: 1,
+      replyToAddress: false,
+      toAddress: to,
+      fromAlias: fromName,
+      subject,
+      htmlBody: html,
+      textBody: text,
     });
 
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      const msg = errorBody?.Message || errorBody?.message || response.statusText;
-      return { success: false, error: `Aliyun DirectMail error ${response.status}: ${msg}` };
-    }
+    // Send request
+    await client.singleSendMail(request);
 
     return { success: true };
   } catch (error) {
     console.error('[Aliyun DirectMail] Send error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    let errorMessage = 'Unknown error';
+
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'object' && error !== null) {
+      // Handle Aliyun SDK error format
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const err = error as any;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      errorMessage = err?.message || err?.data?.Message || JSON.stringify(error);
+    }
+
     return { success: false, error: errorMessage };
   }
 }
