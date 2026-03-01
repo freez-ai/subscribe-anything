@@ -4,11 +4,23 @@ import { getDb } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { createVerificationCode } from '@/lib/auth/verification';
 import { sendVerificationCode, isSmtpConfigured } from '@/lib/email/smtp';
+import { verifyTurnstileToken, isTurnstileConfigured } from '@/lib/turnstile';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email } = body;
+    const { email, token } = body;
+
+    // 如果配置了 Turnstile，则进行验证
+    if (isTurnstileConfigured()) {
+      const turnstileResult = await verifyTurnstileToken(token);
+      if (!turnstileResult.success) {
+        return NextResponse.json(
+          { error: turnstileResult.error || '人机验证失败，请重试' },
+          { status: 403 }
+        );
+      }
+    }
 
     if (!email) {
       return NextResponse.json({ error: '请输入邮箱地址' }, { status: 400 });

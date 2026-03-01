@@ -3,6 +3,7 @@ import { users, passwordResetTokens } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import { isSmtpConfigured } from '@/lib/email/smtp';
+import { verifyTurnstileToken, isTurnstileConfigured } from '@/lib/turnstile';
 import crypto from 'crypto';
 
 const TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
@@ -17,10 +18,21 @@ function generateToken(): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email } = body;
+    const { email, turnstileToken } = body;
 
     if (!email) {
       return Response.json({ error: '请输入邮箱地址' }, { status: 400 });
+    }
+
+    // 如果配置了 Turnstile，则进行验证
+    if (isTurnstileConfigured()) {
+      const turnstileResult = await verifyTurnstileToken(turnstileToken);
+      if (!turnstileResult.success) {
+        return Response.json(
+          { error: turnstileResult.error || '人机验证失败，请重试' },
+          { status: 403 }
+        );
+      }
     }
 
     // Check if email provider is configured
@@ -69,7 +81,7 @@ export async function POST(req: Request) {
       .run();
 
     // Create new token
-    const token = generateToken();
+    const resetToken = generateToken();
     const id = createId();
     const expiresAt = new Date(now.getTime() + TOKEN_EXPIRY_MS);
 
@@ -77,7 +89,7 @@ export async function POST(req: Request) {
       .values({
         id,
         userId: user.id,
-        token,
+        token: resetToken,
         expiresAt,
         createdAt: now,
       })
@@ -85,7 +97,7 @@ export async function POST(req: Request) {
 
     // Send email
     const { sendEmail } = await import('@/lib/email/smtp');
-    const resetLink = `${process.env.NEXT_PUBLIC_BASE_URL || ''}/reset-password?token=${token}`;
+    const resetLink = `${process.env.NEXT_PUBLIC_BASE_URL || ''}/reset-password?token=${resetToken}`;
 
     const html = `
       <!DOCTYPE html>

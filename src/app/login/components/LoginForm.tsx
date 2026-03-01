@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Turnstile } from '@marsidev/react-turnstile';
 
 interface LoginFormProps {
   mode: 'login' | 'register';
@@ -23,6 +24,11 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
   const [needsVerification, setNeedsVerification] = useState(false);
   const [canResetPassword, setCanResetPassword] = useState(false);
 
+  // Turnstile state
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileKey, setTurnstileKey] = useState(0);
+  const [turnstileSiteKey] = useState(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '');
+
   // Fetch whether this registration requires email verification
   useEffect(() => {
     fetch('/api/auth/register-status')
@@ -32,6 +38,12 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
         setCanResetPassword(!!data.canResetPassword);
       })
       .catch(() => setNeedsVerification(false));
+  }, [mode]);
+
+  // Reset turnstile token when mode changes
+  useEffect(() => {
+    setTurnstileToken('');
+    setTurnstileKey(prev => prev + 1);
   }, [mode]);
 
   // Countdown timer
@@ -52,12 +64,18 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
       return;
     }
 
+    // Check Turnstile if configured
+    if (turnstileSiteKey && !turnstileToken) {
+      alert('请先完成人机验证');
+      return;
+    }
+
     setSendingCode(true);
     try {
       const res = await fetch('/api/auth/send-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, token: turnstileToken }),
       });
 
       const data = await res.json();
@@ -68,15 +86,25 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
 
       setCodeSent(true);
       setCountdown(60); // 60 seconds countdown
+      // Reset turnstile token for potential next use
+      setTurnstileToken('');
+      setTurnstileKey(prev => prev + 1);
     } catch (err) {
       alert('发送验证码失败，请稍后重试');
     } finally {
       setSendingCode(false);
     }
-  }, [email, countdown]);
+  }, [email, countdown, turnstileToken, turnstileSiteKey]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check Turnstile if configured and this is registration
+    if (mode === 'register' && turnstileSiteKey && !turnstileToken) {
+      alert('请先完成人机验证');
+      return;
+    }
+
     onSubmit(
       email,
       password,
@@ -84,6 +112,8 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
       mode === 'register' && needsVerification ? verificationCode : undefined,
     );
   };
+
+  const showTurnstile = turnstileSiteKey && mode === 'register';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -158,6 +188,19 @@ export function LoginForm({ mode, loading, onSubmit, onToggleMode }: LoginFormPr
           disabled={loading}
         />
       </div>
+
+      {/* Turnstile 验证组件 */}
+      {showTurnstile && (
+        <div className="flex justify-center py-2">
+          <Turnstile
+            key={turnstileKey}
+            siteKey={turnstileSiteKey}
+            onSuccess={(token) => setTurnstileToken(token)}
+            onError={() => setTurnstileToken('')}
+            onExpire={() => setTurnstileToken('')}
+          />
+        </div>
+      )}
 
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? '处理中...' : mode === 'login' ? '登录' : '注册'}

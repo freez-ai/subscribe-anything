@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft } from 'lucide-react';
+import { Turnstile } from '@marsidev/react-turnstile';
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams();
@@ -22,6 +23,11 @@ function ResetPasswordContent() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetting, setResetting] = useState(false);
+
+  // Turnstile state
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileKey, setTurnstileKey] = useState(0);
+  const [turnstileSiteKey] = useState(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '');
 
   // Check if we have a token, validate it
   useEffect(() => {
@@ -52,13 +58,20 @@ function ResetPasswordContent() {
   const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Check Turnstile if configured
+    if (turnstileSiteKey && !turnstileToken) {
+      alert('请先完成人机验证');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const res = await fetch('/api/auth/reset-password/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, turnstileToken }),
       });
 
       const data = await res.json();
@@ -67,6 +80,9 @@ function ResetPasswordContent() {
       }
 
       setSuccess(true);
+      // Reset turnstile token for potential next use
+      setTurnstileToken('');
+      setTurnstileKey(prev => prev + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : '未知错误');
     } finally {
@@ -109,6 +125,8 @@ function ResetPasswordContent() {
       setResetting(false);
     }
   };
+
+  const showTurnstile = turnstileSiteKey;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
@@ -162,6 +180,19 @@ function ResetPasswordContent() {
                     disabled={loading}
                   />
                 </div>
+
+                {/* Turnstile 验证组件 */}
+                {showTurnstile && (
+                  <div className="flex justify-center py-2">
+                    <Turnstile
+                      key={turnstileKey}
+                      siteKey={turnstileSiteKey}
+                      onSuccess={(token) => setTurnstileToken(token)}
+                      onError={() => setTurnstileToken('')}
+                      onExpire={() => setTurnstileToken('')}
+                    />
+                  </div>
+                )}
 
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? '发送中...' : '发送重置邮件'}
