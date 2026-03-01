@@ -381,9 +381,9 @@ export default function SubscriptionDetailPage() {
           </div>
           {/* Desktop: respect layout state */}
           {layout === 'masonry' ? (
-            <div className="hidden md:flex gap-3">
+            <div className="hidden md:flex gap-3 overflow-hidden">
               {[0, 1, 2].map((colIdx) => (
-                <div key={colIdx} className="flex-1 flex flex-col gap-3">
+                <div key={colIdx} className="flex-1 min-w-0 flex flex-col gap-3">
                   {cards
                     .filter((_, i) => i % 3 === colIdx)
                     .map((card) => (
@@ -516,7 +516,7 @@ function MasonryCard({
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
       className={[
-        'w-full text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60 relative cursor-pointer',
+        'w-full min-w-0 text-left rounded-lg border transition-colors overflow-hidden flex flex-col bg-card hover:bg-accent/60 relative cursor-pointer break-words',
         isUnread ? 'border-primary/40' : 'border-border',
       ].join(' ')}
     >
