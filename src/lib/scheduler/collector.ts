@@ -14,6 +14,7 @@ import { runScript } from '@/lib/sandbox/runner';
 import { hash } from '@/lib/utils/hash';
 import { nextCronDate } from '@/lib/utils/cron';
 import { createNotification } from '@/lib/notifications';
+import { scheduleRetry, clearRetry } from './retryManager';
 
 export interface CollectResult {
   newItems: number;
@@ -44,12 +45,13 @@ export async function collect(sourceId: string): Promise<CollectResult> {
     runResult = await runScript(source.script);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    _markFailed(db, source, subscription, errorMsg, now);
+    _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: errorMsg };
   }
 
   if (!runResult.success) {
-    _markFailed(db, source, subscription, runResult.error ?? 'Script error', now);
+    const errorMsg = runResult.error ?? 'Script error';
+    _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: runResult.error };
   }
 
@@ -58,7 +60,7 @@ export async function collect(sourceId: string): Promise<CollectResult> {
   // ── Zero items = script broken (returns nothing useful) ─────────────────────
   if (items.length === 0) {
     const errorMsg = '脚本执行成功但未返回任何数据，请检查脚本逻辑或目标页面是否变更';
-    _markFailed(db, source, subscription, errorMsg, now);
+    _handleFailure(db, source, subscription, errorMsg, now);
     return { newItems: 0, skipped: 0, error: errorMsg };
   }
 
@@ -128,6 +130,7 @@ export async function collect(sourceId: string): Promise<CollectResult> {
   }
 
   // ── Update source stats ───────────────────────────────────────────────────────
+  clearRetry(sourceId);
   const nextRun = nextCronDate(source.cronExpression);
   db.update(sources)
     .set({
@@ -171,6 +174,41 @@ export async function collect(sourceId: string): Promise<CollectResult> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function _handleFailure(
+  db: ReturnType<typeof getDb>,
+  source: { id: string; subscriptionId: string; title: string; cronExpression: string },
+  subscription: { id: string } | undefined,
+  errorMsg: string,
+  now: Date
+) {
+  const retried = scheduleRetry(source.id, errorMsg);
+  if (retried) {
+    _markRetrying(db, source, errorMsg, now);
+  } else {
+    _markFailed(db, source, subscription, errorMsg, now);
+  }
+}
+
+function _markRetrying(
+  db: ReturnType<typeof getDb>,
+  source: { id: string; cronExpression: string },
+  errorMsg: string,
+  now: Date
+) {
+  db.update(sources)
+    .set({
+      lastRunAt: now,
+      lastRunSuccess: false,
+      lastError: errorMsg,
+      totalRuns: sql`${sources.totalRuns} + 1`,
+      updatedAt: now,
+    })
+    .where(eq(sources.id, source.id))
+    .run();
+
+  console.log(`[Collector] source=${source.id} FAILED (retrying): ${errorMsg}`);
+}
 
 function _markFailed(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

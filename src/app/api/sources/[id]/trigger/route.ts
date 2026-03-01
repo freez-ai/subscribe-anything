@@ -2,6 +2,7 @@ import { eq, and } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { sources, subscriptions } from '@/lib/db/schema';
 import { collect } from '@/lib/scheduler/collector';
+import { clearRetry } from '@/lib/scheduler/retryManager';
 import { requireAuth } from '@/lib/auth';
 
 // POST /api/sources/[id]/trigger
@@ -26,6 +27,9 @@ export async function POST(
     if (!result) {
       return Response.json({ error: 'Source not found' }, { status: 404 });
     }
+
+    // Clear any pending retry before manual trigger
+    clearRetry(id);
 
     // Run directly — does NOT go through p-limit
     const collectResult = await collect(id);

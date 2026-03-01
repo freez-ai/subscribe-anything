@@ -28,6 +28,12 @@ interface Source {
 interface Notification {
   id: string; type: string; title: string; body: string | null;
 }
+interface RetryInfo {
+  attempt: number;
+  maxAttempts: number;
+  nextRetryAt: number;
+  lastError: string;
+}
 
 export default function SourcesPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +43,8 @@ export default function SourcesPage() {
   const [repairTarget, setRepairTarget] = useState<Source | null>(null);
   const [scriptTarget, setScriptTarget] = useState<Source | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [retryStates, setRetryStates] = useState<Record<string, RetryInfo>>({});
+  const prevRetryIdsRef = useRef<Set<string>>(new Set());
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -58,6 +66,36 @@ export default function SourcesPage() {
   }, [id]);
 
   useEffect(() => { fetchSources(); fetchNotifs(); }, [fetchSources, fetchNotifs]);
+
+  // ── Retry state polling ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (sources.length === 0) return;
+    const ids = sources.map((s) => s.id).join(',');
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/sources/retry-states?ids=${ids}`);
+        if (!res.ok) return;
+        const data: Record<string, RetryInfo> = await res.json();
+        setRetryStates(data);
+
+        // If a source was retrying before but no longer is, refetch sources
+        const currentIds = new Set(Object.keys(data));
+        const prevIds = prevRetryIdsRef.current;
+        for (const pid of prevIds) {
+          if (!currentIds.has(pid)) {
+            fetchSources();
+            break;
+          }
+        }
+        prevRetryIdsRef.current = currentIds;
+      } catch { /* ignore */ }
+    };
+
+    poll();
+    const timer = setInterval(poll, 3000);
+    return () => clearInterval(timer);
+  }, [sources.length, fetchSources]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dismissNotif = async (nid: string) => {
     await fetch(`/api/notifications/${nid}/read`, { method: 'POST' });
@@ -165,6 +203,7 @@ export default function SourcesPage() {
           <div className="hidden md:grid md:grid-cols-2 gap-3">
             {sources.map((src) => (
               <SourceCard key={src.id} src={src}
+                retryState={retryStates[src.id]}
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
@@ -178,6 +217,7 @@ export default function SourcesPage() {
           <div className="md:hidden flex flex-col gap-2">
             {sources.map((src) => (
               <SourceAccordion key={src.id} src={src}
+                retryState={retryStates[src.id]}
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
@@ -331,7 +371,14 @@ function NotificationBanners({ notifs, onDismiss, onDismissBatch }: {
 }
 
 /* ── Status badge ── */
-function StatusBadge({ status }: { status: Source['status'] }) {
+function StatusBadge({ status, retryState }: { status: Source['status']; retryState?: RetryInfo }) {
+  if (retryState) {
+    return (
+      <Badge variant="outline" className="text-xs bg-orange-500/15 text-orange-700 border-orange-500/30">
+        重试中 ({retryState.attempt}/{retryState.maxAttempts})
+      </Badge>
+    );
+  }
   const map = {
     active: { label: '运行中', cls: 'bg-green-500/15 text-green-700 border-green-500/30' },
     failed: { label: '失败', cls: 'bg-destructive/15 text-destructive border-destructive/30' },
@@ -377,9 +424,28 @@ function CronSelector({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
+/* ── Retry countdown banner ── */
+function RetryBanner({ retryState }: { retryState: RetryInfo }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const remaining = Math.max(0, Math.ceil((retryState.nextRetryAt - now) / 1000));
+  return (
+    <div className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400 rounded px-2 py-1.5 flex items-center gap-1.5">
+      <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
+      {remaining > 0
+        ? `采集失败，${remaining}s 后第 ${retryState.attempt}/${retryState.maxAttempts} 次重试...`
+        : `正在第 ${retryState.attempt}/${retryState.maxAttempts} 次重试...`}
+    </div>
+  );
+}
+
 /* ── Desktop Source Card ── */
-function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
-  src: Source; onToggle: (v: boolean) => void;
+function SourceCard({ src, retryState, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
+  src: Source; retryState?: RetryInfo; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
   onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
@@ -430,9 +496,11 @@ function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onR
 
       {/* Status + stats */}
       <div className="flex items-center gap-2 flex-wrap">
-        <StatusBadge status={src.status} />
+        <StatusBadge status={src.status} retryState={retryState} />
         <span className="text-xs text-muted-foreground">运行 {src.totalRuns} 次 · 采集 {src.itemsCollected} 条</span>
       </div>
+
+      {retryState && <RetryBanner retryState={retryState} />}
 
       {src.lastError && (
         <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1 line-clamp-2">{src.lastError}</p>
@@ -469,8 +537,8 @@ function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onR
 }
 
 /* ── Mobile Accordion ── */
-function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
-  src: Source; onToggle: (v: boolean) => void;
+function SourceAccordion({ src, retryState, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
+  src: Source; retryState?: RetryInfo; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
   onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
@@ -511,7 +579,7 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange
             </div>
           )}
           <div className="flex items-center gap-2 mt-0.5">
-            <StatusBadge status={src.status} />
+            <StatusBadge status={src.status} retryState={retryState} />
             <span className="text-xs text-muted-foreground">{src.itemsCollected} 条</span>
           </div>
         </button>
@@ -534,6 +602,8 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange
               {src.url.slice(0, 40)}{src.url.length > 40 ? '…' : ''}
             </a>
           </div>
+
+          {retryState && <RetryBanner retryState={retryState} />}
 
           {src.lastError && (
             <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">{src.lastError}</p>
