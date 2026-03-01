@@ -227,6 +227,9 @@ export async function runMigrations() {
   // === Email verification system migration ===
   migrateEmailVerification(sqlite);
 
+  // === Password reset migration ===
+  migratePasswordReset(sqlite);
+
   // === Google OAuth config migration ===
   migrateOAuthConfig(sqlite);
 
@@ -603,8 +606,28 @@ function migrateEmailVerification(sqlite: InstanceType<typeof Database>) {
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN require_verification INTEGER NOT NULL DEFAULT 1'); } catch { /* already exists */ }
   try { sqlite.exec("ALTER TABLE smtp_config ADD COLUMN provider TEXT NOT NULL DEFAULT 'smtp'"); } catch { /* already exists */ }
   try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN zeabur_api_key TEXT'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE smtp_config ADD COLUMN resend_api_key TEXT'); } catch { /* already exists */ }
 
   console.log('[DB] Email verification system migration complete');
+}
+
+function migratePasswordReset(sqlite: InstanceType<typeof Database>) {
+  // Create password_reset_tokens table
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT UNIQUE NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  // Create index for faster lookups
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id)`);
+
+  console.log('[DB] Password reset migration complete');
 }
 
 function migrateManagedCreation(sqlite: InstanceType<typeof Database>) {

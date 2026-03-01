@@ -75,20 +75,6 @@ export async function PUT(req: Request) {
     }
 
     const db = getDb();
-
-    // Auto-migrate: add resend_api_key column if it doesn't exist
-    try {
-      const tableInfo = db.prepare('PRAGMA table_info(smtp_config)').all() as Array<{ name: string }>;
-      const hasResendColumn = tableInfo.some(col => col.name === 'resend_api_key');
-      if (!hasResendColumn) {
-        db.exec('ALTER TABLE smtp_config ADD COLUMN resend_api_key TEXT');
-        console.log('[smtp PUT] Added resend_api_key column');
-      }
-    } catch (e) {
-      console.error('[smtp PUT] Migration check failed:', e);
-      // Continue anyway, error will be caught below if column is missing
-    }
-
     const existing = db.select({ password: smtpConfig.password, zeaburApiKey: smtpConfig.zeaburApiKey, resendApiKey: smtpConfig.resendApiKey }).from(smtpConfig).where(eq(smtpConfig.id, 'default')).get();
 
     // Keep existing secrets if new ones are empty
