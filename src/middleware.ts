@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/api/auth'];
+const PUBLIC_PATHS = ['/login', '/reset-password', '/api/auth'];
 const STATIC_PATHS = ['/_next', '/favicon', '/icon', '/images'];
 
 export function middleware(req: NextRequest) {
