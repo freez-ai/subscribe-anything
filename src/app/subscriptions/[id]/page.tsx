@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, LayoutGrid, AlignJustify, ExternalLink,
+  ArrowLeft, LayoutGrid, AlignJustify, ExternalLink, Circle,
   X, Loader2, BarChart2, CheckCheck, RefreshCw, CheckCircle2, Bell, Heart, ScrollText,
   History, Star, Trash2,
 } from 'lucide-react';
@@ -618,8 +618,9 @@ function MasonryCard({
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground truncate">{card.sourceTitle}</span>
         </div>
-        <p className="text-sm leading-snug line-clamp-3">
-          {card.title}
+        <p className="text-sm leading-snug line-clamp-3 flex items-start gap-1.5">
+          {isUnread && <Circle className="h-2 w-2 mt-[5px] flex-shrink-0 fill-primary text-primary" />}
+          <span>{card.title}</span>
         </p>
         {card.summary && (
           <p className="text-xs text-muted-foreground line-clamp-4 leading-relaxed">{card.summary}</p>
@@ -687,8 +688,9 @@ function TimelineCard({
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="text-[11px] text-muted-foreground truncate">{card.sourceTitle}</span>
         </div>
-        <p className="text-sm leading-snug line-clamp-2">
-          {card.title}
+        <p className="text-sm leading-snug line-clamp-2 flex items-start gap-1.5">
+          {isUnread && <Circle className="h-2 w-2 mt-[5px] flex-shrink-0 fill-primary text-primary" />}
+          <span>{card.title}</span>
         </p>
         {card.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{card.summary}</p>}
         <div className="flex items-center mt-1 gap-2">
