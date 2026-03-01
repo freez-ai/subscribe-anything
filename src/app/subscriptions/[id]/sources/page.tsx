@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Play, Wrench, Clock, X, Loader2,
+  ArrowLeft, Play, Wrench, Clock, X, Loader2, Trash2,
   CheckCircle2, XCircle, AlertCircle, ChevronDown, ChevronUp, Code2, Copy, Check, Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -103,6 +103,21 @@ export default function SourcesPage() {
     showToast('名称已更新');
   };
 
+  const [deleteTarget, setDeleteTarget] = useState<Source | null>(null);
+
+  const handleDelete = async (src: Source) => {
+    setDeleteTarget(null);
+    setSources((p) => p.filter((s) => s.id !== src.id));
+    try {
+      const res = await fetch(`/api/sources/${src.id}`, { method: 'DELETE' });
+      if (!res.ok) { showToast('删除失败', false); fetchSources(); return; }
+      showToast('订阅源已删除');
+    } catch {
+      showToast('删除失败', false);
+      fetchSources();
+    }
+  };
+
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -155,6 +170,7 @@ export default function SourcesPage() {
                 onTitleChange={(t) => handleTitleChange(src, t)}
                 onRepair={() => setRepairTarget(src)}
                 onViewScript={() => setScriptTarget(src)}
+                onDelete={() => setDeleteTarget(src)}
               />
             ))}
           </div>
@@ -167,6 +183,7 @@ export default function SourcesPage() {
                 onTitleChange={(t) => handleTitleChange(src, t)}
                 onRepair={() => setRepairTarget(src)}
                 onViewScript={() => setScriptTarget(src)}
+                onDelete={() => setDeleteTarget(src)}
               />
             ))}
           </div>
@@ -188,6 +205,22 @@ export default function SourcesPage() {
           source={scriptTarget}
           onClose={() => setScriptTarget(null)}
         />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 bg-black/50">
+          <div className="bg-background w-full md:max-w-sm rounded-t-2xl md:rounded-xl shadow-xl p-6">
+            <h3 className="font-semibold mb-2">确认删除</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              确定要删除订阅源「{deleteTarget.title}」吗？相关的采集数据将一并删除，此操作不可撤销。
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>取消</Button>
+              <Button variant="destructive" onClick={() => handleDelete(deleteTarget)}>删除</Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast */}
@@ -251,10 +284,10 @@ function CronSelector({ value, onChange }: { value: string; onChange: (v: string
 }
 
 /* ── Desktop Source Card ── */
-function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript }: {
+function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
   src: Source; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
-  onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void;
+  onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingValue, setEditingValue] = useState('');
@@ -293,7 +326,12 @@ function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onR
           <a href={src.url} target="_blank" rel="noopener noreferrer"
             className="text-xs text-muted-foreground truncate mt-0.5 hover:underline underline-offset-2 block">{src.url}</a>
         </div>
-        <Switch checked={src.isEnabled} onCheckedChange={onToggle} />
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <Switch checked={src.isEnabled} onCheckedChange={onToggle} />
+          <button onClick={onDelete} className="text-muted-foreground hover:text-destructive transition-colors" title="删除订阅源">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Status + stats */}
@@ -337,10 +375,10 @@ function SourceCard({ src, onToggle, onTrigger, onCronChange, onTitleChange, onR
 }
 
 /* ── Mobile Accordion ── */
-function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript }: {
+function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
   src: Source; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
-  onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void;
+  onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -355,9 +393,8 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-left"
-        onClick={() => !editingTitle && setOpen((v) => !v)}>
-        <div className="flex-1 min-w-0">
+      <div className="w-full flex items-center gap-3 px-4 py-3">
+        <button className="flex-1 min-w-0 text-left" onClick={() => !editingTitle && setOpen((v) => !v)}>
           {editingTitle ? (
             <input
               autoFocus
@@ -383,10 +420,17 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange
             <StatusBadge status={src.status} />
             <span className="text-xs text-muted-foreground">{src.itemsCollected} 条</span>
           </div>
+        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <Switch checked={src.isEnabled} onCheckedChange={onToggle} />
+          <button onClick={onDelete} className="text-muted-foreground hover:text-destructive transition-colors" title="删除订阅源">
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button onClick={() => !editingTitle && setOpen((v) => !v)} className="text-muted-foreground">
+            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         </div>
-        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          : <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
-      </button>
+      </div>
 
       {open && (
         <div className="px-4 pb-4 flex flex-col gap-3 border-t">
@@ -395,7 +439,6 @@ function SourceAccordion({ src, onToggle, onTrigger, onCronChange, onTitleChange
               className="text-xs text-muted-foreground hover:underline underline-offset-2 truncate flex-1 min-w-0 mr-2">
               {src.url.slice(0, 40)}{src.url.length > 40 ? '…' : ''}
             </a>
-            <Switch checked={src.isEnabled} onCheckedChange={onToggle} />
           </div>
 
           {src.lastError && (
