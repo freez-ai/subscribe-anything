@@ -8,7 +8,7 @@ import { requireAuth } from '@/lib/auth';
 
 // POST /api/subscriptions/[id]/analyze
 // Body: { description: string, limit?: number, cardIds?: string[] }
-// Streams: { type:'llm_call', ...info } … { type:'chunk', html } … { type:'done' }
+// Streams: { type:'llm_call', ...info } … { type:'chunk', html } … { type:'done', reportId }
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -87,57 +87,84 @@ export async function POST(
       return Response.json({ error: '暂无数据可分析' }, { status: 400 });
     }
 
+    // Create a report with 'generating' status before streaming
+    const report = db.insert(analysisReports).values({
+      subscriptionId: id,
+      userId: session.userId,
+      title: '分析报告中...',
+      description: description || null,
+      htmlContent: '',
+      cardCount: cards.length,
+      status: 'generating',
+    }).returning({ id: analysisReports.id }).get();
+
+    const reportId = report.id;
+
     return sseStream(async (emit) => {
       let accumulatedHtml = '';
 
-      await analyzeAgent(
-        {
-          topic: sub.topic,
-          criteria: sub.criteria,
-          description,
-          cards: cards.map((c) => ({
-            title: c.title,
-            summary: c.summary,
-            publishedAt: c.publishedAt ? new Date(c.publishedAt).toISOString() : null,
-            sourceName: c.sourceName ?? undefined,
-            sourceUrl: c.sourceUrl,
-            meetsCriteriaFlag: c.meetsCriteriaFlag,
-          })),
-        },
-        {
-          onChunk: (html) => {
-            accumulatedHtml += html;
-            emit({ type: 'chunk', html });
+      try {
+        await analyzeAgent(
+          {
+            topic: sub.topic,
+            criteria: sub.criteria,
+            description,
+            cards: cards.map((c) => ({
+              title: c.title,
+              summary: c.summary,
+              publishedAt: c.publishedAt ? new Date(c.publishedAt).toISOString() : null,
+              sourceName: c.sourceName ?? undefined,
+              sourceUrl: c.sourceUrl,
+              meetsCriteriaFlag: c.meetsCriteriaFlag,
+            })),
           },
-          onCall: (info: LLMCallInfo) => emit({ type: 'llm_call', ...info }),
-          onToolCall: (name, detail) => emit({ type: 'tool_call', name, detail }),
-        },
-        session.userId
-      );
+          {
+            onChunk: (html) => {
+              accumulatedHtml += html;
+              emit({ type: 'chunk', html });
+            },
+            onCall: (info: LLMCallInfo) => emit({ type: 'llm_call', ...info }),
+            onToolCall: (name, detail) => emit({ type: 'tool_call', name, detail }),
+          },
+          session.userId
+        );
 
-      // Extract title from HTML: first <h1> or first line of text
-      let title = '分析报告';
-      const h1Match = accumulatedHtml.match(/<h1[^>]*>(.*?)<\/h1>/i);
-      if (h1Match) {
-        title = h1Match[1].replace(/<[^>]*>/g, '').trim();
-      } else {
-        const textMatch = accumulatedHtml.replace(/<[^>]*>/g, ' ').trim();
-        if (textMatch) {
-          title = textMatch.slice(0, 80);
+        // Extract title from HTML: first <h1> or first line of text
+        let title = '分析报告';
+        const h1Match = accumulatedHtml.match(/<h1[^>]*>(.*?)<\/h1>/i);
+        if (h1Match) {
+          title = h1Match[1].replace(/<[^>]*>/g, '').trim();
+        } else {
+          const textMatch = accumulatedHtml.replace(/<[^>]*>/g, ' ').trim();
+          if (textMatch) {
+            title = textMatch.slice(0, 80);
+          }
         }
+
+        // Update report with completed status
+        db.update(analysisReports)
+          .set({
+            title,
+            htmlContent: accumulatedHtml,
+            status: 'completed',
+          })
+          .where(eq(analysisReports.id, reportId))
+          .run();
+
+        emit({ type: 'done', reportId });
+      } catch (err) {
+        console.error('[analyze background]', err);
+        // Update report with failed status
+        db.update(analysisReports)
+          .set({
+            status: 'failed',
+            error: err instanceof Error ? err.message : '生成失败',
+          })
+          .where(eq(analysisReports.id, reportId))
+          .run();
+
+        emit({ type: 'error', message: err instanceof Error ? err.message : '生成失败' });
       }
-
-      // Save report to database
-      const report = db.insert(analysisReports).values({
-        subscriptionId: id,
-        userId: session.userId,
-        title,
-        description: description || null,
-        htmlContent: accumulatedHtml,
-        cardCount: cards.length,
-      }).returning({ id: analysisReports.id }).get();
-
-      emit({ type: 'done', reportId: report.id });
     });
   } catch (err) {
     if (err instanceof Error && err.message === 'UNAUTHORIZED') {

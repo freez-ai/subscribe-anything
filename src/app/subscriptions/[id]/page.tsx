@@ -815,18 +815,18 @@ function AnalyzeDialog({
     }
   };
 
-  const openInNewWindow = (htmlContent?: string) => {
-    const content = htmlContent ?? html;
-    const fullHtml = `<html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:20px;line-height:1.6;color:#111}h2{font-size:1.1rem;font-weight:600;margin-top:1.5rem}ul{padding-left:1.5rem}li{margin-bottom:.25rem}strong{color:#333}</style></head><body>${content}</body></html>`;
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.open();
-      win.document.write(fullHtml);
-      win.document.close();
+  const openInNewWindow = () => {
+    if (savedReportId) {
+      window.open(`/reports/${savedReportId}`, '_blank');
     }
   };
 
   const reset = () => {
+    // Abort current request if any
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
     setHtml('');
     setError('');
     setLlmCalls([]);
@@ -834,8 +834,6 @@ function AnalyzeDialog({
     setSavedReportId(null);
     countedCallsRef.current.clear();
   };
-
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const isIdle = !streaming && !html && !error;
   const isDone = !streaming && !!html;
@@ -884,7 +882,6 @@ function AnalyzeDialog({
         {showHistory ? (
           <ReportHistoryView
             subscriptionId={subscriptionId}
-            onViewReport={(htmlContent) => openInNewWindow(htmlContent)}
           />
         ) : (
           <>
@@ -919,6 +916,7 @@ function AnalyzeDialog({
                 <div className="flex flex-col items-center gap-3 py-6">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">AI 正在分析数据，请稍候...</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">可随时关闭窗口，后续可通过右上角 <History className="h-3 w-3" /> 查看</p>
                   {/* LLM log button */}
                   {llmCalls.length > 0 && (
                     <button
@@ -939,7 +937,7 @@ function AnalyzeDialog({
                   <p className="font-medium">分析完成</p>
                   <p className="text-sm text-muted-foreground">
                     点击「查看」在新窗口中打开分析报告
-                    {savedReportId && <span className="block text-xs mt-1 text-green-600">已自动保存到历史报告</span>}
+                    {savedReportId && <span className="block text-xs mt-1">已自动保存到历史报告</span>}
                   </p>
                   {/* LLM log button */}
                   {llmCalls.length > 0 && (
@@ -972,7 +970,7 @@ function AnalyzeDialog({
               )}
               {isDone && (
                 <>
-                  <Button onClick={() => openInNewWindow()} className="gap-2">
+                  <Button onClick={openInNewWindow} className="gap-2">
                     <ExternalLink className="h-4 w-4" />
                     查看
                   </Button>
@@ -1009,15 +1007,15 @@ interface ReportSummary {
   description: string | null;
   cardCount: number;
   isStarred: boolean;
+  status: 'generating' | 'completed' | 'failed';
+  error: string | null;
   createdAt: string;
 }
 
 function ReportHistoryView({
   subscriptionId,
-  onViewReport,
 }: {
   subscriptionId: string;
-  onViewReport: (htmlContent: string) => void;
 }) {
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1038,7 +1036,21 @@ function ReportHistoryView({
 
   useEffect(() => { fetchReports(); }, [fetchReports]);
 
+  // 自动刷新生成中的报告
+  useEffect(() => {
+    const hasGenerating = reports.some(r => r.status === 'generating');
+    if (hasGenerating) {
+      const timer = setTimeout(() => {
+        fetchReports();
+      }, 3000); // 每3秒刷新一次
+      return () => clearTimeout(timer);
+    }
+  }, [reports, fetchReports]);
+
   const handleToggleStar = async (report: ReportSummary) => {
+    // 生成中的报告不能星标
+    if (report.status === 'generating') return;
+
     const newStarred = !report.isStarred;
     setReports((prev) => prev.map((r) =>
       r.id === report.id ? { ...r, isStarred: newStarred } : r
@@ -1060,13 +1072,11 @@ function ReportHistoryView({
     setReports((prev) => prev.filter((r) => r.id !== reportId));
   };
 
-  const handleView = async (reportId: string) => {
-    try {
-      const res = await fetch(`/api/subscriptions/${subscriptionId}/reports/${reportId}`);
-      if (!res.ok) return;
-      const report = await res.json();
-      onViewReport(report.htmlContent);
-    } catch { /* ignore */ }
+  const handleView = (reportId: string, status: string) => {
+    // 生成中或失败的报告不能查看
+    if (status === 'generating' || status === 'failed') return;
+    // 直接导航到报告页面（兼容微信浏览器）
+    window.open(`/reports/${reportId}`, '_blank');
   };
 
   return (
@@ -1116,65 +1126,91 @@ function ReportHistoryView({
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {reports.map((report) => (
-              <div
-                key={report.id}
-                className="border rounded-lg p-3 hover:bg-accent/40 transition-colors group"
-              >
-                <div className="flex items-start gap-2">
-                  <div
-                    className="flex-1 min-w-0 cursor-pointer"
-                    onClick={() => handleView(report.id)}
-                  >
-                    <p className="text-sm font-medium line-clamp-2 leading-snug">{report.title}</p>
-                    {report.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{report.description}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1.5 text-[11px] text-muted-foreground">
-                      <span>{formatDistanceToNow(report.createdAt)}</span>
-                      <span>·</span>
-                      <span>{report.cardCount} 条数据</span>
+            {reports.map((report) => {
+              const isGenerating = report.status === 'generating';
+              const isFailed = report.status === 'failed';
+              const isDisabled = isGenerating || isFailed;
+              return (
+                <div
+                  key={report.id}
+                  className={[
+                    'border rounded-lg p-3 transition-colors group',
+                    isDisabled ? 'bg-muted/50' : 'hover:bg-accent/40',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start gap-2">
+                    <div
+                      className={[
+                        'flex-1 min-w-0',
+                        isDisabled ? 'cursor-not-allowed' : 'cursor-pointer',
+                      ].join(' ')}
+                      onClick={() => handleView(report.id, report.status)}
+                    >
+                      <p className={[
+                        'text-sm font-medium line-clamp-2 leading-snug',
+                        isGenerating ? 'flex items-center gap-2' : '',
+                      ].join(' ')}>
+                        {isGenerating && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {report.title}
+                      </p>
+                      {report.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{report.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1.5 text-[11px] text-muted-foreground">
+                        <span>{formatDistanceToNow(report.createdAt)}</span>
+                        <span>·</span>
+                        <span>{report.cardCount} 条数据</span>
+                        {isGenerating && <span className="text-blue-500">· 生成中...</span>}
+                        {isFailed && <span className="text-destructive">· 生成失败</span>}
+                      </div>
+                      {isFailed && report.error && (
+                        <p className="text-xs text-destructive mt-1 line-clamp-1">{report.error}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => handleToggleStar(report)}
+                        className={[
+                          'p-1.5 rounded-md transition-colors',
+                          isDisabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted',
+                        ].join(' ')}
+                        title={report.isStarred ? '取消星标' : '加星标'}
+                        disabled={isDisabled}
+                      >
+                        <Star className={[
+                          'h-4 w-4',
+                          report.isStarred ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground',
+                        ].join(' ')} />
+                      </button>
+                      {deletingId === report.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleDelete(report.id)}
+                            className="px-2 py-1 rounded text-xs bg-destructive text-destructive-foreground"
+                          >
+                            确认
+                          </button>
+                          <button
+                            onClick={() => setDeletingId(null)}
+                            className="px-2 py-1 rounded text-xs bg-muted text-muted-foreground"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeletingId(report.id)}
+                          className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                          title="删除"
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button
-                      onClick={() => handleToggleStar(report)}
-                      className="p-1.5 rounded-md hover:bg-muted transition-colors"
-                      title={report.isStarred ? '取消星标' : '加星标'}
-                    >
-                      <Star className={[
-                        'h-4 w-4',
-                        report.isStarred ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground',
-                      ].join(' ')} />
-                    </button>
-                    {deletingId === report.id ? (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleDelete(report.id)}
-                          className="px-2 py-1 rounded text-xs bg-destructive text-destructive-foreground"
-                        >
-                          确认
-                        </button>
-                        <button
-                          onClick={() => setDeletingId(null)}
-                          className="px-2 py-1 rounded text-xs bg-muted text-muted-foreground"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setDeletingId(report.id)}
-                        className="p-1.5 rounded-md hover:bg-muted transition-colors"
-                        title="删除"
-                      >
-                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                      </button>
-                    )}
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

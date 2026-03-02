@@ -318,6 +318,10 @@ export async function runMigrations() {
     )
   `);
 
+  // Add status and error columns for async report generation
+  try { sqlite.exec('ALTER TABLE analysis_reports ADD COLUMN status TEXT NOT NULL DEFAULT "completed"'); } catch { /* already exists */ }
+  try { sqlite.exec('ALTER TABLE analysis_reports ADD COLUMN error TEXT'); } catch { /* already exists */ }
+
   // Repair: older migrations incorrectly set user_id on base system templates.
   // Base templates must always have user_id = NULL so the cleanup DELETE below ignores them.
   try {

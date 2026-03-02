@@ -29,6 +29,13 @@
       "when": 1772378595752,
       "tag": "0003_perpetual_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1772459509058,
+      "tag": "0004_salty_inhumans",
+      "breakpoints": true
     }
   ]
 }

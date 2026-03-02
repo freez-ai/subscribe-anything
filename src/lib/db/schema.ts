@@ -276,9 +276,13 @@ export const analysisReports = sqliteTable('analysis_reports', {
     .references(() => users.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   description: text('description'),
-  htmlContent: text('html_content').notNull(),
+  htmlContent: text('html_content').notNull().default(''),
   cardCount: integer('card_count').notNull().default(0),
   isStarred: integer('is_starred', { mode: 'boolean' }).notNull().default(false),
+  status: text('status', { enum: ['generating', 'completed', 'failed'] })
+    .notNull()
+    .default('completed'),
+  error: text('error'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .$defaultFn(() => new Date()).notNull(),
 });

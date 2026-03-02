@@ -34,6 +34,8 @@ export async function GET(
       description: analysisReports.description,
       cardCount: analysisReports.cardCount,
       isStarred: analysisReports.isStarred,
+      status: analysisReports.status,
+      error: analysisReports.error,
       createdAt: analysisReports.createdAt,
     })
       .from(analysisReports)
