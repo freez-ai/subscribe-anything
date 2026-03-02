@@ -733,27 +733,22 @@ function RepairDialog({ source, onClose, showToast }: {
   source: Source; onClose: () => void; showToast: (m: string, ok?: boolean) => void;
 }) {
   const [messages, setMessages] = useState<{ role: 'system' | 'user'; text: string }[]>([]);
-  const [repairedScript, setRepairedScript] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [applying, setApplying] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [llmCalls, setLlmCalls] = useState<LLMCallInfo[]>([]);
   const [totalTokens, setTotalTokens] = useState(0);
   const [showLog, setShowLog] = useState(false);
   const countedCallsRef = useRef<Set<number>>(new Set());
-  const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
     setMessages([]);
     setLlmCalls([]);
     setTotalTokens(0);
     setDone(false);
-    setRepairedScript(null);
+    setSuccess(false);
     countedCallsRef.current.clear();
-    runRepair(ctrl);
-    return () => ctrl.abort();
+    startAndMonitorRepair();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -764,15 +759,19 @@ function RepairDialog({ source, onClose, showToast }: {
   const addMsg = (text: string) =>
     setMessages((p) => [...p, { role: 'system', text }]);
 
-  const runRepair = async (ctrl: AbortController) => {
+  const startAndMonitorRepair = async () => {
     addMsg(`开始修复：${source.title}`);
     try {
-      const res = await fetch(`/api/sources/${source.id}/repair`, {
-        method: 'POST', signal: ctrl.signal,
-      });
-      if (!res.ok) { addMsg('修复请求失败'); setDone(true); return; }
+      // 1. Fire-and-forget POST to start repair
+      const postRes = await fetch(`/api/sources/${source.id}/repair`, { method: 'POST' });
+      if (!postRes.ok) { addMsg('修复请求失败'); setDone(true); return; }
 
-      const reader = res.body!.getReader();
+      // 2. GET SSE to monitor progress
+      const ctrl = new AbortController();
+      const sseRes = await fetch(`/api/sources/${source.id}/repair`, { signal: ctrl.signal });
+      if (!sseRes.ok) { addMsg('无法连接修复进度'); setDone(true); return; }
+
+      const reader = sseRes.body!.getReader();
       const dec = new TextDecoder();
       let buf = '';
 
@@ -789,11 +788,10 @@ function RepairDialog({ source, onClose, showToast }: {
             const ev = JSON.parse(line.slice(6));
             if (ev.type === 'progress') addMsg(ev.message);
             else if (ev.type === 'success') {
-              setRepairedScript(ev.script);
-              addMsg('✅ 修复成功！请确认后应用。');
+              setSuccess(true);
+              addMsg('✅ 修复成功，已自动应用');
             } else if (ev.type === 'failed') {
               addMsg(`❌ 修复失败：${ev.reason ?? '未知原因'}`);
-              if (ev.script) setRepairedScript(ev.script);
             } else if (ev.type === 'llm_call') {
               const info = ev as unknown as LLMCallInfo;
               setLlmCalls((prev) => {
@@ -814,27 +812,17 @@ function RepairDialog({ source, onClose, showToast }: {
         }
       }
     } catch (e) {
-      if (e instanceof Error && e.name !== 'AbortError') addMsg('连接中断');
+      if (e instanceof Error && e.name !== 'AbortError') addMsg('连接中断（修复仍在后台运行）');
     } finally {
-      if (!ctrl.signal.aborted) setDone(true);
+      setDone(true);
     }
   };
 
-  const applyFix = async () => {
-    if (!repairedScript) return;
-    setApplying(true);
-    try {
-      await fetch(`/api/sources/${source.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: repairedScript, status: 'active', lastError: null }),
-      });
-      showToast('修复已应用，订阅源已恢复');
-      onClose();
-    } catch {
-      showToast('应用失败', false);
-    } finally {
-      setApplying(false);
+  const handleClose = () => {
+    if (success) {
+      showToast('修复已自动应用，订阅源已恢复');
     }
+    onClose();
   };
 
   return (
@@ -846,7 +834,7 @@ function RepairDialog({ source, onClose, showToast }: {
             <h2 className="font-semibold">AI 智能修复</h2>
             <p className="text-xs text-muted-foreground truncate max-w-xs">{source.title}</p>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button onClick={handleClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -887,21 +875,16 @@ function RepairDialog({ source, onClose, showToast }: {
           </div>
         )}
 
-        {/* Actions — always visible */}
+        {/* Actions */}
         <div className="px-5 py-4 border-t flex gap-2">
-          {!done ? (
-            <Button disabled className="flex-1 gap-2">
+          {!done && (
+            <div className="flex-1 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              修复中…
-            </Button>
-          ) : repairedScript ? (
-            <Button onClick={applyFix} disabled={applying} className="flex-1 gap-2">
-              {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              应用修复
-            </Button>
-          ) : null}
-          <Button variant="outline" onClick={onClose} className={(!done || repairedScript) ? '' : 'flex-1'}>
-            {!done ? '取消' : repairedScript ? '取消' : '关闭'}
+              修复中…（可关闭窗口，后台继续运行）
+            </div>
+          )}
+          <Button variant="outline" onClick={handleClose} className={done ? 'flex-1' : ''}>
+            关闭
           </Button>
         </div>
       </div>
