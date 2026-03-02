@@ -27,6 +27,7 @@ interface Source {
 }
 interface Notification {
   id: string; type: string; title: string; body: string | null;
+  relatedEntityId?: string | null;
 }
 interface RetryInfo {
   attempt: number;
@@ -54,6 +55,7 @@ export default function SourcesPage() {
   const prevRetryIdsRef = useRef<Set<string>>(new Set());
   const collectingMapRef = useRef<Map<string, number>>(new Map()); // id → timestamp
   const [collectingIds, setCollectingIds] = useState<Set<string>>(new Set());
+  const [repairingIds, setRepairingIds] = useState<Set<string>>(new Set());
   const pollNowRef = useRef<(() => void) | null>(null);
 
   const showToast = (msg: string, ok = true) => {
@@ -72,7 +74,21 @@ export default function SourcesPage() {
 
   const fetchNotifs = useCallback(async () => {
     const res = await fetch(`/api/notifications?subscriptionId=${id}&isRead=false`);
-    if (res.ok) setNotifs(await res.json());
+    if (res.ok) {
+      const newNotifs = await res.json();
+      setNotifs(newNotifs);
+
+      // Check for repair completion notifications and remove from repairingIds
+      for (const n of newNotifs) {
+        if ((n.type === 'source_fixed' || n.type === 'source_failed') && n.relatedEntityId) {
+          setRepairingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(n.relatedEntityId);
+            return next;
+          });
+        }
+      }
+    }
   }, [id]);
 
   useEffect(() => { fetchSources(); fetchNotifs(); }, [fetchSources, fetchNotifs]);
@@ -275,6 +291,7 @@ export default function SourcesPage() {
               <SourceCard key={src.id} src={src}
                 retryState={retryStates[src.id]}
                 isBusy={collectingIds.has(src.id) || !!retryStates[src.id]}
+                isRepairing={repairingIds.has(src.id)}
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
@@ -290,6 +307,7 @@ export default function SourcesPage() {
               <SourceAccordion key={src.id} src={src}
                 retryState={retryStates[src.id]}
                 isBusy={collectingIds.has(src.id) || !!retryStates[src.id]}
+                isRepairing={repairingIds.has(src.id)}
                 onToggle={(c) => handleToggle(src, c)}
                 onTrigger={() => handleTrigger(src)}
                 onCronChange={(c) => handleCronChange(src, c)}
@@ -307,7 +325,13 @@ export default function SourcesPage() {
       {repairTarget && (
         <RepairDialog
           source={repairTarget}
-          onClose={() => { setRepairTarget(null); fetchSources(); }}
+          onClose={(isRepairing) => {
+            if (isRepairing) {
+              setRepairingIds((prev) => new Set(prev).add(repairTarget.id));
+            }
+            setRepairTarget(null);
+            fetchSources();
+          }}
           showToast={showToast}
         />
       )}
@@ -529,8 +553,8 @@ function RetryBanner({ retryState }: { retryState: RetryInfo }) {
 }
 
 /* ── Desktop Source Card ── */
-function SourceCard({ src, retryState, isBusy, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
-  src: Source; retryState?: RetryInfo; isBusy: boolean; onToggle: (v: boolean) => void;
+function SourceCard({ src, retryState, isBusy, isRepairing, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
+  src: Source; retryState?: RetryInfo; isBusy: boolean; isRepairing: boolean; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
   onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
@@ -611,9 +635,15 @@ function SourceCard({ src, retryState, isBusy, onToggle, onTrigger, onCronChange
             : <><Play className="h-3.5 w-3.5" />立即采集</>}
         </Button>
         {(src.status === 'failed' || (src.status === 'pending' && !src.script)) && (
-          <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
-            <Wrench className="h-3.5 w-3.5" />AI 修复
-          </Button>
+          isRepairing ? (
+            <Button variant="outline" size="sm" className="gap-1 flex-1" disabled>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />修复中
+            </Button>
+          ) : (
+            <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
+              <Wrench className="h-3.5 w-3.5" />AI 修复
+            </Button>
+          )
         )}
         <Button variant="outline" size="sm" className="gap-1 px-2" onClick={onViewScript} title="查看脚本">
           <Code2 className="h-3.5 w-3.5" />
@@ -624,8 +654,8 @@ function SourceCard({ src, retryState, isBusy, onToggle, onTrigger, onCronChange
 }
 
 /* ── Mobile Accordion ── */
-function SourceAccordion({ src, retryState, isBusy, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
-  src: Source; retryState?: RetryInfo; isBusy: boolean; onToggle: (v: boolean) => void;
+function SourceAccordion({ src, retryState, isBusy, isRepairing, onToggle, onTrigger, onCronChange, onTitleChange, onRepair, onViewScript, onDelete }: {
+  src: Source; retryState?: RetryInfo; isBusy: boolean; isRepairing: boolean; onToggle: (v: boolean) => void;
   onTrigger: () => void; onCronChange: (v: string) => void;
   onTitleChange: (v: string) => void; onRepair: () => void; onViewScript: () => void; onDelete: () => void;
 }) {
@@ -714,9 +744,15 @@ function SourceAccordion({ src, retryState, isBusy, onToggle, onTrigger, onCronC
                 : <><Play className="h-3.5 w-3.5" />立即采集</>}
             </Button>
             {(src.status === 'failed' || (src.status === 'pending' && !src.script)) && (
-              <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
-                <Wrench className="h-3.5 w-3.5" />AI 修复
-              </Button>
+              isRepairing ? (
+                <Button variant="outline" size="sm" className="gap-1 flex-1" disabled>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />修复中
+                </Button>
+              ) : (
+                <Button variant="destructive" size="sm" className="gap-1 flex-1" onClick={onRepair}>
+                  <Wrench className="h-3.5 w-3.5" />AI 修复
+                </Button>
+              )
             )}
             <Button variant="outline" size="sm" className="gap-1 px-2" onClick={onViewScript} title="查看脚本">
               <Code2 className="h-3.5 w-3.5" />
@@ -730,7 +766,7 @@ function SourceAccordion({ src, retryState, isBusy, onToggle, onTrigger, onCronC
 
 /* ── Repair Dialog ── */
 function RepairDialog({ source, onClose, showToast }: {
-  source: Source; onClose: () => void; showToast: (m: string, ok?: boolean) => void;
+  source: Source; onClose: (isRepairing: boolean) => void; showToast: (m: string, ok?: boolean) => void;
 }) {
   const [messages, setMessages] = useState<{ role: 'system' | 'user'; text: string }[]>([]);
   const [done, setDone] = useState(false);
@@ -822,7 +858,8 @@ function RepairDialog({ source, onClose, showToast }: {
     if (success) {
       showToast('修复已自动应用，订阅源已恢复');
     }
-    onClose();
+    // Pass isRepairing flag: true if not done yet (still running in background)
+    onClose(!done);
   };
 
   return (
