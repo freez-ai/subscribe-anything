@@ -79,8 +79,10 @@ export default function SourcesPage() {
       setNotifs(newNotifs);
 
       // Check for repair completion notifications and remove from repairingIds
+      let hasRepairCompletion = false;
       for (const n of newNotifs) {
         if ((n.type === 'source_fixed' || n.type === 'source_failed') && n.relatedEntityId) {
+          hasRepairCompletion = true;
           setRepairingIds((prev) => {
             const next = new Set(prev);
             next.delete(n.relatedEntityId);
@@ -88,8 +90,12 @@ export default function SourcesPage() {
           });
         }
       }
+      // Refetch sources to reflect status changes after repair
+      if (hasRepairCompletion) {
+        fetchSources();
+      }
     }
-  }, [id]);
+  }, [id, fetchSources]);
 
   useEffect(() => { fetchSources(); fetchNotifs(); }, [fetchSources, fetchNotifs]);
 
@@ -163,6 +169,9 @@ export default function SourcesPage() {
               }
             }
           }
+          fetchNotifs();
+        } else {
+          // Still poll notifications for repair completion updates
           fetchNotifs();
         }
       } catch { /* ignore */ }
