@@ -3,9 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Power, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import type { Subscription } from '@/types/db';
 
 interface SubscriptionCardProps {
@@ -14,7 +13,6 @@ interface SubscriptionCardProps {
     latestLogStep?: string | null;
     wizardStep?: number | null;
   };
-  onToggle: (id: string, isEnabled: boolean) => void;
   onDelete: (id: string) => void;
   onDiscard?: (id: string) => void;
 }
@@ -31,13 +29,11 @@ function formatRelativeTime(date: Date | null | undefined): string {
   return `${days} 天前`;
 }
 
-const SWIPE_THRESHOLD = 100;
-const SWIPE_MAX = 180; // Width for both toggle and delete buttons
-const DELETE_ONLY_WIDTH = 120; // Width for delete-only state
+const SWIPE_THRESHOLD = 120;
+const DELETE_ONLY_WIDTH = 120;
 
 export default function SubscriptionCard({
   subscription,
-  onToggle,
   onDelete,
   onDiscard,
 }: SubscriptionCardProps) {
@@ -83,10 +79,7 @@ export default function SubscriptionCard({
   // Cards in creating state have special click behavior
   const handleCardClick = () => {
     // Don't click if swiped past half threshold
-    const halfThreshold = (!isManagedCreating && !isManualCreating && !isFailed)
-      ? SWIPE_THRESHOLD / 2
-      : DELETE_ONLY_WIDTH / 2;
-    if (swipeX < -halfThreshold) return;
+    if (swipeX < -DELETE_ONLY_WIDTH / 2) return;
 
     if (managedStatus === 'manual_creating' || managedStatus === 'managed_creating' || managedStatus === 'failed') {
       // All creating/failed states resume wizard
@@ -104,7 +97,7 @@ export default function SubscriptionCard({
   const isManualCreating = managedStatus === 'manual_creating';
 
   // Calculate action panel offset based on card state
-  const actionOffset = (!isManagedCreating && !isManualCreating && !isFailed) ? SWIPE_MAX : DELETE_ONLY_WIDTH;
+  const actionOffset = DELETE_ONLY_WIDTH;
 
   // Touch handlers for swipe
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -120,29 +113,22 @@ export default function SubscriptionCard({
     // Only allow left swipe (negative deltaX) and limit vertical movement
     if (deltaX < 0 && Math.abs(deltaY) < 50) {
       setIsSwiping(true);
-      // Clamp based on card state
-      const maxSwipe = (!isManagedCreating && !isManualCreating && !isFailed) ? SWIPE_MAX : DELETE_ONLY_WIDTH;
-      const clampedDeltaX = Math.max(-maxSwipe, Math.min(0, deltaX));
+      const clampedDeltaX = Math.max(-DELETE_ONLY_WIDTH, Math.min(0, deltaX));
       setSwipeX(clampedDeltaX);
     }
-  }, [isManagedCreating, isManualCreating, isFailed]);
+  }, []);
 
   const handleTouchEnd = useCallback(() => {
     if (!isSwiping) return;
 
-    // Calculate threshold and snap position based on card state
-    const isCreatingOrFailed = isManagedCreating || isManualCreating || isFailed;
-    const threshold = isCreatingOrFailed ? DELETE_ONLY_WIDTH / 2 : SWIPE_THRESHOLD;
-    const snapPosition = isCreatingOrFailed ? -DELETE_ONLY_WIDTH : -SWIPE_MAX;
-
     // If swiped past threshold, snap to open, else close
-    if (swipeX < -threshold) {
-      setSwipeX(snapPosition);
+    if (swipeX < -DELETE_ONLY_WIDTH / 2) {
+      setSwipeX(-DELETE_ONLY_WIDTH);
     } else {
       setSwipeX(0);
     }
     setIsSwiping(false);
-  }, [isSwiping, swipeX, isManagedCreating, isManualCreating, isFailed]);
+  }, [isSwiping, swipeX]);
 
   const handleDelete = useCallback(() => {
     setSwipeX(0);
@@ -170,28 +156,9 @@ export default function SubscriptionCard({
           width: `${actionOffset}px`,
         }}
       >
-        {/* Toggle button (left side) - only for non-creating cards */}
-        {!isManagedCreating && !isManualCreating && !isFailed && (
-          <div
-            className={`flex-1 flex flex-col items-center justify-center gap-1 ${
-              subscription.isEnabled
-                ? 'bg-green-500 text-white'
-                : 'bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-300'
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle(subscription.id, !subscription.isEnabled);
-            }}
-          >
-            <Power className="h-5 w-5" />
-            <span className="text-[10px] font-medium">{subscription.isEnabled ? '启用' : '禁用'}</span>
-          </div>
-        )}
-        {/* Delete button (right side) */}
+        {/* Delete button */}
         <div
-          className={`bg-destructive flex flex-col items-center justify-center gap-1 text-white ${
-            !isManagedCreating && !isManualCreating && !isFailed ? 'flex-1' : 'w-28'
-          }`}
+          className="bg-destructive flex flex-col items-center justify-center gap-1 text-white w-28"
           onClick={(e) => {
             e.stopPropagation();
             handleDelete();
@@ -210,7 +177,7 @@ export default function SubscriptionCard({
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
         }}
-        onClick={!isManagedCreating && swipeX > -SWIPE_THRESHOLD ? handleCardClick : undefined}
+        onClick={!isManagedCreating ? handleCardClick : undefined}
       >
         {/* Header row */}
         <div className="flex items-start justify-between gap-2">
@@ -298,16 +265,8 @@ export default function SubscriptionCard({
                 </Button>
               </>
             ) : (
-              // Normal state / manual creating / failed: show switch + delete (desktop)
+              // Normal state / manual creating / failed: show delete button (desktop)
               <>
-                {!isManagedCreating && !isManualCreating && !isFailed && (
-                  <Switch
-                    className="hidden md:inline-flex"
-                    checked={subscription.isEnabled}
-                    onCheckedChange={(checked) => onToggle(subscription.id, checked)}
-                    aria-label={subscription.isEnabled ? '禁用订阅' : '启用订阅'}
-                  />
-                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -328,12 +287,6 @@ export default function SubscriptionCard({
             <span>共 {subscription.totalCount} 条</span>
             <span>·</span>
             <span>更新于 {formatRelativeTime(subscription.lastUpdatedAt)}</span>
-            {!subscription.isEnabled && (
-              <>
-                <span>·</span>
-                <span className="text-amber-500">已暂停</span>
-              </>
-            )}
           </div>
         )}
       </div>

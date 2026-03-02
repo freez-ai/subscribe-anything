@@ -42,28 +42,6 @@ export default function SubscriptionList() {
     return () => clearInterval(timer);
   }, [subscriptions, fetchSubscriptions]);
 
-  const handleToggle = useCallback(async (id: string, isEnabled: boolean) => {
-    // Optimistic update
-    setSubscriptions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, isEnabled } : s))
-    );
-
-    try {
-      const res = await fetch(`/api/subscriptions/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isEnabled }),
-      });
-      if (!res.ok) throw new Error('Failed');
-    } catch {
-      // Rollback
-      setSubscriptions((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, isEnabled: !isEnabled } : s))
-      );
-      toast({ title: isEnabled ? '启用失败' : '禁用失败', variant: 'destructive' });
-    }
-  }, [toast]);
-
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('确认删除这个订阅？相关数据将一并删除。')) return;
 
@@ -145,7 +123,6 @@ export default function SubscriptionList() {
         <SubscriptionCard
           key={sub.id}
           subscription={sub}
-          onToggle={handleToggle}
           onDelete={handleDelete}
           onDiscard={handleDiscard}
         />
