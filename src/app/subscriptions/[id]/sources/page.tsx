@@ -787,13 +787,15 @@ function RepairDialog({ source, onClose, showToast }: {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     setMessages([]);
     setLlmCalls([]);
     setTotalTokens(0);
     setDone(false);
     setSuccess(false);
     countedCallsRef.current.clear();
-    startAndMonitorRepair();
+    startAndMonitorRepair(ctrl.signal);
+    return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -804,16 +806,15 @@ function RepairDialog({ source, onClose, showToast }: {
   const addMsg = (text: string) =>
     setMessages((p) => [...p, { role: 'system', text }]);
 
-  const startAndMonitorRepair = async () => {
+  const startAndMonitorRepair = async (signal: AbortSignal) => {
     addMsg(`开始修复：${source.title}`);
     try {
       // 1. Fire-and-forget POST to start repair
-      const postRes = await fetch(`/api/sources/${source.id}/repair`, { method: 'POST' });
+      const postRes = await fetch(`/api/sources/${source.id}/repair`, { method: 'POST', signal });
       if (!postRes.ok) { addMsg('修复请求失败'); setDone(true); return; }
 
       // 2. GET SSE to monitor progress
-      const ctrl = new AbortController();
-      const sseRes = await fetch(`/api/sources/${source.id}/repair`, { signal: ctrl.signal });
+      const sseRes = await fetch(`/api/sources/${source.id}/repair`, { signal });
       if (!sseRes.ok) { addMsg('无法连接修复进度'); setDone(true); return; }
 
       const reader = sseRes.body!.getReader();
