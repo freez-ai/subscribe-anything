@@ -154,18 +154,10 @@ function CallBlock({
               </div>
             );
           })}
-          {(info.responseText || isStreaming) && (
+          {info.responseText && (
             <div className="flex gap-2 items-start">
-              <span className="flex-shrink-0 text-green-400 text-[10px] leading-[1.6]">[text]</span>
               <span className="text-foreground/70 text-[11px] leading-relaxed flex-1 min-w-0">
-                {info.responseText ? (
-                  <TruncatableText text={info.responseText} />
-                ) : (
-                  <span className="text-muted-foreground/40 italic">等待响应...</span>
-                )}
-                {isStreaming && (
-                  <span className="inline-block w-[6px] h-[1em] bg-foreground/60 ml-0.5 animate-pulse align-text-bottom" />
-                )}
+                <TruncatableText text={info.responseText} />
               </span>
             </div>
           )}
