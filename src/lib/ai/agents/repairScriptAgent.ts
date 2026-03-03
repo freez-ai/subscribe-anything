@@ -137,13 +137,11 @@ export async function repairScriptAgent(
           onProgress?.(`验证修复后的脚本 (第 ${validateAttempts} 次)...`);
           const result = await validateScript(args.script ?? '');
 
-          if (result.success && (result.itemCount ?? 0) > 0) {
+          if (result.success) {
             lastGoodScript = args.script;
             onProgress?.(`验证通过，采集到 ${result.itemCount ?? 0} 条内容`);
-          } else if (!result.success) {
-            onProgress?.(`验证失败: ${(result.error ?? '').slice(0, 80)}`);
           } else {
-            onProgress?.(`脚本运行成功但未采集到数据 (0 条)，需要继续修复`);
+            onProgress?.(`验证失败: ${(result.error ?? '').slice(0, 80)}`);
           }
 
           resultContent = JSON.stringify({

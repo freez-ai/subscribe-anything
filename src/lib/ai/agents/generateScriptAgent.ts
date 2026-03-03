@@ -215,10 +215,10 @@ export async function generateScriptAgent(
               error: '沙箱不可用，请直接输出最终完整脚本并结束，不要再调用 validateScript。',
             });
           } else if (!result.success) {
-            // Layer 1 failure: sandbox execution error
+            // Layer 1 failure: sandbox execution error or no data collected
             onProgress?.(`验证失败: ${(result.error ?? '').slice(0, 80)}`);
             resultContent = JSON.stringify({
-              success: result.success,
+              success: false,
               itemCount: result.itemCount ?? 0,
               items: result.items?.slice(0, 3),
               error: result.error,
@@ -229,17 +229,6 @@ export async function generateScriptAgent(
                 note: `已尝试 ${MAX_RETRIES} 次验证，请返回当前最佳脚本并结束。`,
               });
             }
-          } else if ((result.itemCount ?? 0) === 0) {
-            // Layer 1 failure: sandbox ran fine but collected no data
-            onProgress?.('脚本执行成功但未采集到任何数据');
-            resultContent = JSON.stringify({
-              success: false,
-              itemCount: 0,
-              error: '脚本成功执行但未采集到任何数据，请检查页面选择器或目标 URL 结构',
-              ...(validateAttempts >= MAX_RETRIES
-                ? { note: `已尝试 ${MAX_RETRIES} 次，请返回当前最佳脚本并结束。` }
-                : {}),
-            });
           } else {
             // Layer 1 passed: ≥1 items collected — run layers 2 & 3 (LLM quality + data check)
             onProgress?.(`沙箱验证通过（${result.itemCount} 条），正在进行质量审查...`);
@@ -266,7 +255,7 @@ export async function generateScriptAgent(
               // instead of relying on the LLM to call validateScript again.
               onProgress?.(`审查失败，正在自动验证修复脚本...`);
               const fixResult = await validateScript(llmCheck.fixedScript);
-              if (fixResult.success && (fixResult.itemCount ?? 0) > 0) {
+              if (fixResult.success) {
                 // Re-run LLM quality check on the fixed script
                 onProgress?.(`修复脚本沙箱通过（${fixResult.itemCount} 条），正在二次审查...`);
                 const fixLlmCheck = await validateScriptAgent(
@@ -394,7 +383,7 @@ export async function generateScriptAgent(
         };
       }
 
-      if (result.success && (result.itemCount ?? 0) > 0) {
+      if (result.success) {
         onProgress?.(`沙箱验证通过（${result.itemCount} 条），正在进行质量审查...`);
         const llmCheck = await validateScriptAgent(
           source,
@@ -419,16 +408,7 @@ export async function generateScriptAgent(
         };
       }
 
-      // Script ran but collected no items (likely SPA / bot-blocking)
-      if (result.success) {
-        return {
-          success: false,
-          script: finalScript,
-          error: '脚本运行正常但未能采集到数据，页面可能需要 JavaScript 渲染或阻止了自动化请求',
-        };
-      }
-
-      // Real execution error (syntax / runtime)
+      // Real execution error (syntax / runtime or no data collected)
       return {
         success: false,
         script: finalScript,

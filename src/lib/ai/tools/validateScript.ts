@@ -21,10 +21,18 @@ export async function validateScript(script: string): Promise<ValidateResult> {
   if (!result.success) {
     return { success: false, error: result.error };
   }
+  const itemCount = result.items?.length ?? 0;
+  if (itemCount === 0) {
+    return {
+      success: false,
+      itemCount: 0,
+      error: '脚本执行成功但未采集到任何数据，请检查页面选择器或目标 URL 结构',
+    };
+  }
   return {
     success: true,
     items: result.items,
-    itemCount: result.items?.length ?? 0,
+    itemCount,
   };
 }
 
