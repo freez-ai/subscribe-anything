@@ -144,7 +144,7 @@ function CallBlock({
                 {toolResult && (
                   <div className="flex gap-2 items-start">
                     <span className="flex-shrink-0 w-[4.5rem] text-yellow-400 text-[10px] leading-[1.6]">
-                      [tool]
+                      [tool_resp]
                     </span>
                     <span className="text-foreground/70 text-[11px] leading-relaxed flex-1 min-w-0">
                       <TruncatableText text={toolResult.content} />
