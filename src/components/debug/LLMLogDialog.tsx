@@ -26,14 +26,14 @@ function TruncatableText({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
 
   const lines = text.split('\n');
-  const needsTruncation = lines.length > 3 || text.length > MAX_PREVIEW_CHARS;
+  const needsTruncation = lines.length > 5 || text.length > MAX_PREVIEW_CHARS;
 
   if (!needsTruncation) {
     return <span className="whitespace-pre-wrap break-all">{text}</span>;
   }
 
   // Cap preview by both line count AND character count
-  const previewByLines = lines.slice(0, 3).join('\n');
+  const previewByLines = lines.slice(0, 5).join('\n');
   const preview =
     previewByLines.length > MAX_PREVIEW_CHARS
       ? previewByLines.slice(0, MAX_PREVIEW_CHARS)
