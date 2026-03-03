@@ -107,8 +107,8 @@ export default function FavoritesPage() {
           <h1 className="text-xl font-semibold">我的收藏</h1>
           <p className="text-xs text-muted-foreground mt-0.5">共 {total} 条收藏</p>
         </div>
-        {/* Layout toggle: desktop only */}
-        <div className="hidden md:flex items-center gap-1">
+        {/* Layout toggle */}
+        <div className="flex items-center gap-1">
           <Button
             variant={layout === 'masonry' ? 'secondary' : 'ghost'}
             size="icon"
@@ -144,18 +144,38 @@ export default function FavoritesPage() {
         </div>
       ) : (
         <>
-          {/* Mobile: always timeline */}
-          <div className="flex flex-col gap-2 md:hidden">
-            {favorites.map((item) => (
-              <TimelineCard
-                key={item.id}
-                item={item}
-                onClick={() => handleCardClick(item)}
-                onToggleFavorite={() => handleToggleFavorite(item.id)}
-              />
-            ))}
-          </div>
-          {/* Desktop: respect layout state */}
+          {/* Mobile masonry: 2 columns */}
+          {layout === 'masonry' ? (
+            <div className="flex gap-2 md:hidden overflow-hidden">
+              {[0, 1].map((colIdx) => (
+                <div key={colIdx} className="flex-1 min-w-0 flex flex-col gap-2">
+                  {favorites
+                    .filter((_, i) => i % 2 === colIdx)
+                    .map((item) => (
+                      <MasonryCard
+                        key={item.id}
+                        item={item}
+                        onClick={() => handleCardClick(item)}
+                        onToggleFavorite={() => handleToggleFavorite(item.id)}
+                      />
+                    ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Mobile timeline */
+            <div className="flex flex-col gap-2 md:hidden">
+              {favorites.map((item) => (
+                <TimelineCard
+                  key={item.id}
+                  item={item}
+                  onClick={() => handleCardClick(item)}
+                  onToggleFavorite={() => handleToggleFavorite(item.id)}
+                />
+              ))}
+            </div>
+          )}
+          {/* Desktop masonry: 3 columns */}
           {layout === 'masonry' ? (
             <div className="hidden md:flex gap-3 overflow-hidden">
               {[0, 1, 2].map((colIdx) => (
@@ -174,6 +194,7 @@ export default function FavoritesPage() {
               ))}
             </div>
           ) : (
+            /* Desktop timeline */
             <div className="hidden md:flex flex-col gap-2">
               {favorites.map((item) => (
                 <TimelineCard
